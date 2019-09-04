@@ -4,15 +4,6 @@ use std::net::TcpStream;
 use std::io::{Write, Read};
 use std::collections::HashMap;
 
-// Todo:
-//  - Lab 1 exercises
-//      - Send User-Agent
-//      - Add support for file://
-//      - Add support for 300 range redirects
-//  - Lab 2
-//  - Lab 3
-//  - Lab 4
-//  - Lab 5
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() != 2 {
@@ -117,5 +108,14 @@ fn request(host: &str, port: &str, path: &str) -> (HashMap<String, String>, Stri
 }
 
 fn show(body: String) {
-    println!("{}", body);
+    let mut in_angle = false;
+    for c in body.chars() {
+        if c == '<' {
+            in_angle = true;
+        } else if c == '>' {
+            in_angle = false;
+        } else if !in_angle {
+            print!("{}", c);
+        }
+    }
 }
