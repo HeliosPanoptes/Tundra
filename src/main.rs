@@ -58,8 +58,9 @@ fn request(host: &str, port: &str, path: &str) -> (HashMap<String, String>, Stri
     match TcpStream::connect(address) {
         Ok(mut socket) => {
             let request_string = format!("GET {} HTTP/1.1\r\n\
-                                  Host: {}\r\n\
-                                  Connection: close\r\n\r\n", path, host);
+                                          Host: {}\r\n\
+                                          User-Agent: HeliosPanoptes\r\n\
+                                          Connection: close\r\n\r\n", path, host);
 
             socket.write(request_string.as_bytes()).unwrap();
 
@@ -88,14 +89,14 @@ fn request(host: &str, port: &str, path: &str) -> (HashMap<String, String>, Stri
 
                     for header in header_lines {
                         let header_line: Vec<_> = header.splitn(2, ":").collect();
-                        headers.insert(header_line[0].to_string().to_lowercase(),
-                                       header_line[1].to_string().to_lowercase());
+                        headers.insert(header_line[0].to_string().to_lowercase().trim(),
+                                       header_line[1].to_string().to_lowercase().trim());
                     };
 
                     return (headers, body);
                 },
                 Err(_e) => {
-                    println!("Failed to recieve data");
+                    println!("Failed to receive data");
                     exit(1);
                 }
             }
