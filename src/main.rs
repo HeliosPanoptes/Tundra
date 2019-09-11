@@ -1,15 +1,22 @@
-#[macro_use] extern crate conrod_core;
+#[macro_use]
+extern crate conrod_core;
 extern crate conrod_glium;
-#[macro_use] extern crate conrod_winit;
+#[macro_use]
+extern crate conrod_winit;
 extern crate find_folder;
 extern crate glium;
 extern crate image;
+
 
 use std::env;
 use std::process::exit;
 use std::net::TcpStream;
 use std::io::{Write, Read};
 use std::collections::HashMap;
+use glium::Surface;
+
+mod support;
+
 
 // graphics
 
@@ -22,7 +29,7 @@ fn main() {
 
     browse(url);
 
-    start_tundra_app();
+    render();
 
 }
 
@@ -149,7 +156,7 @@ fn render() {
     // Build the window.
     let mut events_loop = glium::glutin::EventsLoop::new();
     let window = glium::glutin::WindowBuilder::new()
-        .with_title("Canvas")
+        .with_title("Tundra")
         .with_dimensions((WIDTH, HEIGHT).into());
     let context = glium::glutin::ContextBuilder::new()
         .with_vsync(true)
@@ -295,5 +302,44 @@ fn set_widgets(ref mut ui: conrod_core::UiCell, ids: &mut Ids) {
     }
     for _click in button.middle_of(ids.floating_b).set(ids.bong, ui) {
         println!("Bong!");
+    }
+}
+
+// Button matrix dimensions.
+const ROWS: usize = 10;
+const COLS: usize = 24;
+
+// Generate a unique `WidgetId` for each widget.
+// Generates the boilerplate for all the `button: conrod::widget::Id, ...`
+widget_ids! {
+    struct Ids {
+        rectangle,
+        oval,
+        text,
+//        master,
+//        header,
+//        body,
+//        left_column,
+//        middle_column,
+//        right_column,
+//        footer,
+//        footer_scrollbar,
+//        floating_a,
+//        floating_b,
+//        tabs,
+//        tab_foo,
+//        tab_bar,
+//        tab_baz,
+//
+//        title,
+//        subtitle,
+//        top_left,
+//        bottom_right,
+//        foo_label,
+//        bar_label,
+//        baz_label,
+//        button_matrix,
+//        bing,
+//        bong,
     }
 }

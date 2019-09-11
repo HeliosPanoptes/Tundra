@@ -253,16 +253,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "derivative"
-version = "1.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-dependencies = [
- "proc-macro2 0.4.30 (registry+https://github.com/rust-lang/crates.io-index)",
- "quote 0.6.13 (registry+https://github.com/rust-lang/crates.io-index)",
- "syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "dlib"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -359,20 +349,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glium"
-version = "0.25.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-dependencies = [
- "backtrace 0.3.37 (registry+https://github.com/rust-lang/crates.io-index)",
- "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "gl_generator 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "glutin 0.21.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "smallvec 0.6.10 (registry+https://github.com/rust-lang/crates.io-index)",
- "takeable-option 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "glutin"
 version = "0.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -398,32 +374,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "glutin"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-dependencies = [
- "android_glue 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "cgl 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "cocoa 0.18.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "core-foundation 0.6.4 (registry+https://github.com/rust-lang/crates.io-index)",
- "core-graphics 0.17.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "derivative 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "glutin_egl_sys 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "glutin_emscripten_sys 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "glutin_gles2_sys 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "glutin_glx_sys 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)",
- "glutin_wgl_sys 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "libloading 0.5.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "objc 0.2.6 (registry+https://github.com/rust-lang/crates.io-index)",
- "osmesa-sys 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
- "parking_lot 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "wayland-client 0.21.13 (registry+https://github.com/rust-lang/crates.io-index)",
- "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "winit 0.19.3 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "glutin_egl_sys"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -431,11 +381,6 @@ dependencies = [
  "gl_generator 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "winapi 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
-
-[[package]]
-name = "glutin_emscripten_sys"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "glutin_gles2_sys"
@@ -1004,11 +949,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "takeable-option"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
 name = "tiff"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1027,8 +967,9 @@ dependencies = [
  "conrod_glium 0.67.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "conrod_winit 0.67.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "find_folder 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "glium 0.25.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "glium 0.24.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "image 0.22.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "winit 0.19.3 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1213,7 +1154,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum crossbeam-utils 0.6.6 (registry+https://github.com/rust-lang/crates.io-index)" = "04973fa96e96579258a5091af6003abde64af786b860f18622b82e026cca60e6"
 "checksum daggy 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)" = "9293a0da7d1bc1f30090ece4d9f9de79a07be7302ddb00e5eb1fefb6ee6409e2"
 "checksum deflate 0.7.20 (registry+https://github.com/rust-lang/crates.io-index)" = "707b6a7b384888a70c8d2e8650b3e60170dfc6a67bb4aa67b6dfca57af4bedb4"
-"checksum derivative 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "942ca430eef7a3806595a6737bc388bf51adb888d3fc0dd1b50f1c170167ee3a"
 "checksum dlib 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)" = "77e51249a9d823a4cb79e3eca6dcd756153e8ed0157b6c04775d04bf1b13b76a"
 "checksum downcast-rs 1.0.4 (registry+https://github.com/rust-lang/crates.io-index)" = "f2b92dfd5c2f75260cbf750572f95d387e7ca0ba5e3fbe9e1a33f23025be020f"
 "checksum either 1.5.2 (registry+https://github.com/rust-lang/crates.io-index)" = "5527cfe0d098f36e3f8839852688e63c8fff1c90b2b405aef730615f9a7bcf7b"
@@ -1227,11 +1167,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum gl_generator 0.13.1 (registry+https://github.com/rust-lang/crates.io-index)" = "ca98bbde17256e02d17336a6bdb5a50f7d0ccacee502e191d3e3d0ec2f96f84a"
 "checksum gleam 0.6.19 (registry+https://github.com/rust-lang/crates.io-index)" = "cae10d7c99d0e77b4766e850a60898a17c1abaf01075531f1066f03dc7dc5fc5"
 "checksum glium 0.24.0 (registry+https://github.com/rust-lang/crates.io-index)" = "213290166315d0ff3cf48dd76a31f3ad57c934182d3e87aeec890f2747226a21"
-"checksum glium 0.25.1 (registry+https://github.com/rust-lang/crates.io-index)" = "6d7d887755ee729c5204e151db1c81b0b5beb809ef5e01d0eb14847e80a71256"
 "checksum glutin 0.20.1 (registry+https://github.com/rust-lang/crates.io-index)" = "6e5cc17ac6cb35704f434faaa5bb5e4254a66f50853976c7e6f00aee09ff1bf2"
-"checksum glutin 0.21.1 (registry+https://github.com/rust-lang/crates.io-index)" = "938ce7a2b1bbfe1535166133bea3f9c1b46350d2794b49561303575e9e1b9949"
 "checksum glutin_egl_sys 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "23f48987ab6cb2b61ad903b59e54a2fd0c380a7baff68cffd6826b69a73dd326"
-"checksum glutin_emscripten_sys 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "245b3fdb08df6ffed7585365851f8404af9c7e2dd4b59f15262e968b6a95a0c7"
 "checksum glutin_gles2_sys 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "89996c30857ae1b4de4b5189abf1ea822a20a9fe9e1c93e5e7b862ff0bdd5cdf"
 "checksum glutin_glx_sys 0.1.5 (registry+https://github.com/rust-lang/crates.io-index)" = "1290a5ca5e46fcfa7f66f949cc9d9194b2cb6f2ed61892c8c2b82343631dba57"
 "checksum glutin_wgl_sys 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)" = "f801bbc91efc22dd1c4818a47814fc72bf74d024510451b119381579bfa39021"
@@ -1300,7 +1237,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum stb_truetype 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)" = "824210d6fb52cbc3ad2545270ead6860c7311aa5450642b078da4515937b6f7a"
 "checksum syn 0.15.44 (registry+https://github.com/rust-lang/crates.io-index)" = "9ca4b3b69a77cbe1ffc9e198781b7acb0c7365a883670e8f1c1bc66fba79a5c5"
 "checksum syn 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "66850e97125af79138385e9b88339cbcd037e3f28ceab8c5ad98e64f0f1f80bf"
-"checksum takeable-option 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d77adff586b9bd922afef7791341ed94b09845e11225929217efe949e6366d43"
 "checksum tiff 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "d7b7c2cfc4742bd8a32f2e614339dd8ce30dbcf676bb262bd63a2327bc5df57d"
 "checksum unicode-xid 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)" = "fc72304796d0818e357ead4e000d19c9c174ab23dc11093ac919054d20a6a7fc"
 "checksum unicode-xid 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "826e7639553986605ec5979c7dd957c7895e93eabed50ab2ffa7f6128a75097c"
