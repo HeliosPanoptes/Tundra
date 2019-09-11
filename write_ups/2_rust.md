@@ -1,8 +1,8 @@
-Once a web browser has downloaded a web page(, it has to show that web page to the user. Since we are not savages,[1] browsers use a graphical user interface to draw web pages in a mix of fonts, colors, and styles. How does it do that? Well, in short, it talks to the operating system to create a *window*, walks through the page HTML, and draws text on that window while changing styles as the HTML tags dictate.
+Once a web browser has downloaded a web page, it has to show that web page to the user. Since we are not savages,[1] browsers use a graphical user interface to draw web pages in a mix of fonts, colors, and styles. How does it do that? Well, in short, it talks to the operating system to create a *window*, walks through the page HTML, and draws text on that window while changing styles as the HTML tags dictate.
 
 ## Creating windows
 
-On desktop and laptop computer, users run operating systems that provide *desktop environments*which contain windows, icons, menus, and a pointer.[2] This desktop environment provided by some component of the operating system, which handles important jobs like keeping track of the pointer and where the windows are, talking to applications to get windows contents and tell them about clicks, and pushing pixels to the screen.
+On desktop and laptop computer, users run operating systems that provide *desktop environments* which contain windows, icons, menus, and a pointer.[2] This desktop environment provided by some component of the operating system, which handles important jobs like keeping track of the pointer and where the windows are, talking to applications to get windows contents and tell them about clicks, and pushing pixels to the screen.
 
 In order to draw anything on the screen, a program has to communicate with this operating system component. This communication usually involves:
 
@@ -11,9 +11,34 @@ In order to draw anything on the screen, a program has to communicate with this 
 - Acting on messages from the OS about keyboard and mouse event
 - Redrawing the window contents periodically[3]
 
-Since doing all of this by hand is a bit of a drag, this is usually wrapped up in libraries called *graphical toolkits*. There's one in Python that comes built-in called `tkinter`.[4] Using it is quite simple:
+Since doing all of this by hand is a bit of a drag, this is usually wrapped up in libraries called *graphical toolkits*. We'll be using a rust wrapper of the gtk library, specifically focusing on Cairo, their drawing package. To install the base library on Ubuntu: run `sudo apt-get install libgtk-3-dev`. On macOS: run `brew install gtk+3`.
+
+Add this to your Cargo.toml:
 
 ```
+[dependencies]
+gtk = "0.7.0"
+```
+
+When building, if it spouts an error saying that libffi could not be found, it might be a homebrew issue that can be worked around with
+
+```shell
+PKG_CONFIG_PATH="/usr/local/opt/libffi/lib/pkgconfig" cargo build
+```
+
+If you're using an IDE like the Rust plugin for CLion, it's easiest to build the whole project once using the command line, then the IDE's build will work properly.
+
+```
+extern crate cairo; // Drawing
+extern crate gio;   // IO
+extern crate gtk;   // Application/Window
+
+
+use gio::prelude::*;
+use gtk::prelude::*;
+use gtk::DrawingArea;
+
+
 import tkinter
 window = tkinter.Tk()
 tkinter.mainloop()
