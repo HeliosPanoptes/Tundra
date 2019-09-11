@@ -1,19 +1,17 @@
-extern crate gtk;   // Application/Window
-extern crate cairo; // Drawing
-extern crate gio;   // IO
+#[macro_use] extern crate conrod_core;
+extern crate conrod_glium;
+#[macro_use] extern crate conrod_winit;
+extern crate find_folder;
+extern crate glium;
+extern crate image;
 
 use std::env;
 use std::process::exit;
 use std::net::TcpStream;
 use std::io::{Write, Read};
 use std::collections::HashMap;
-use std::f64::consts::PI;
 
 // graphics
-use gio::prelude::*;
-use gtk::prelude::*;
-use gtk::DrawingArea;
-use cairo::{Context, FontSlant, FontWeight};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -29,86 +27,7 @@ fn main() {
 }
 
 fn start_tundra_app() {
-    let tundra_app = gtk::Application::new(Some("org.heliospanoptes.tundra"),
-                                           gio::ApplicationFlags::FLAGS_NONE)
-                                      .expect("Application::new failed");
 
-    tundra_app.connect_activate(|app| {
-        // We create the main window.
-        let win = gtk::ApplicationWindow::new(app);
-
-        // Then we set its size and a title.
-        win.set_default_size(320, 200);
-        win.set_title("Tundra");
-//
-        //allocate memory for the canvas
-        let canvas = Box::new(DrawingArea::new)();
-        win.add(&canvas);
-
-        canvas.connect_draw(|_, cr| {
-            cr.set_dash(&[3., 2., 1.], 1.);
-            assert_eq!(cr.get_dash(), (vec![3., 2., 1.], 1.));
-
-            cr.scale(500f64, 500f64);
-
-            cr.set_source_rgb(250.0 / 255.0, 224.0 / 255.0, 55.0 / 255.0);
-            cr.paint();
-
-            cr.set_line_width(0.05);
-
-            // border
-            cr.set_source_rgb(0.3, 0.3, 0.3);
-            cr.rectangle(0.0, 0.0, 1.0, 1.0);
-            cr.stroke();
-
-            cr.set_line_width(0.03);
-
-            // draw circle
-            cr.arc(0.5, 0.5, 0.4, 0.0, PI * 2.);
-            cr.stroke();
-
-            // mouth
-            let mouth_top = 0.68;
-            let mouth_width = 0.38;
-
-            let mouth_dx = 0.10;
-            let mouth_dy = 0.10;
-
-            cr.move_to(0.50 - mouth_width / 2.0, mouth_top);
-            cr.curve_to(
-                0.50 - mouth_dx,
-                mouth_top + mouth_dy,
-                0.50 + mouth_dx,
-                mouth_top + mouth_dy,
-                0.50 + mouth_width / 2.0,
-                mouth_top,
-            );
-
-
-            cr.stroke();
-
-            let eye_y = 0.38;
-            let eye_dx = 0.15;
-            cr.arc(0.5 - eye_dx, eye_y, 0.05, 0.0, PI * 2.);
-            cr.fill();
-
-            cr.arc(0.5 + eye_dx, eye_y, 0.05, 0.0, PI * 2.);
-            cr.fill();
-
-            Inhibit(false)
-        });
-
-        // Don't forget to make all widgets visible.
-        win.show_all();
-        // Foreground
-        win.present();
-
-
-    });
-
-
-
-    tundra_app.run(&[]);
 }
 
 /// A convenience method that combines all of the steps for the browser to
@@ -222,70 +141,3 @@ fn show(body: String) {
         }
     }
 }
-
-//pub fn drawable<F>(window: &gtk::ApplicationWindow, draw_fn: F)
-//    where
-//        F: Fn(&DrawingArea, &Context) -> Inhibit + 'static, {
-//    // Allocate on the heap
-//
-//
-//    canvas.connect_draw(draw_fn);
-//
-//
-//}
-
-//fn build_ui(window: &gtk::ApplicationWindow) {
-//    drawable(window, |_, cr| {
-//        cr.set_dash(&[3., 2., 1.], 1.);
-//        assert_eq!(cr.get_dash(), (vec![3., 2., 1.], 1.));
-//
-//        cr.scale(500f64, 500f64);
-//
-//        cr.set_source_rgb(250.0 / 255.0, 224.0 / 255.0, 55.0 / 255.0);
-//        cr.paint();
-//
-//        cr.set_line_width(0.05);
-//
-//        // border
-//        cr.set_source_rgb(0.3, 0.3, 0.3);
-//        cr.rectangle(0.0, 0.0, 1.0, 1.0);
-//        cr.stroke();
-//
-//        cr.set_line_width(0.03);
-//
-//        // draw circle
-//        cr.arc(0.5, 0.5, 0.4, 0.0, PI * 2.);
-//        cr.stroke();
-//
-//        // mouth
-//        let mouth_top = 0.68;
-//        let mouth_width = 0.38;
-//
-//        let mouth_dx = 0.10;
-//        let mouth_dy = 0.10;
-//
-//        cr.move_to(0.50 - mouth_width / 2.0, mouth_top);
-//        cr.curve_to(
-//            0.50 - mouth_dx,
-//            mouth_top + mouth_dy,
-//            0.50 + mouth_dx,
-//            mouth_top + mouth_dy,
-//            0.50 + mouth_width / 2.0,
-//            mouth_top,
-//        );
-//
-//        println!("Extents: {:?}", cr.fill_extents());
-//
-//        cr.stroke();
-//
-//        let eye_y = 0.38;
-//        let eye_dx = 0.15;
-//        cr.arc(0.5 - eye_dx, eye_y, 0.05, 0.0, PI * 2.);
-//        cr.fill();
-//
-//        cr.arc(0.5 + eye_dx, eye_y, 0.05, 0.0, PI * 2.);
-//        cr.fill();
-//
-//        Inhibit(false)
-//    });
-//}
