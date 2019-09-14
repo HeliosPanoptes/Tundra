@@ -191,19 +191,6 @@ impl Tundra {
         return text;
     }
 
-    fn show(&self, body: String) {
-        let mut in_angle = false;
-        for c in body.chars() {
-            if c == '<' {
-                in_angle = true;
-            } else if c == '>' {
-                in_angle = false;
-            } else if !in_angle {
-                print!("{}", c);
-            }
-        }
-    }
-
     /// Takes text and returns a display-list of the format (x, y, text)
     fn layout<'a>(&self, text: &'a Vec<String>, ref mut ui: conrod_core::UiCell) -> Vec<(f64, f64, &'a String)> {
         let mut display_list = Vec::new(); // (x, y, text)
