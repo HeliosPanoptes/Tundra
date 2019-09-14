@@ -19,6 +19,11 @@ use conrod_core::{color, widget, Colorable, Widget, Positionable, Sizeable};
 mod support;
 
 
+struct WindowUi {
+    ui : conrod_core::Ui,
+    events_loop: glium::glutin::EventsLoop,
+    display: support::GliumDisplayWinitWrapper
+}
 // graphics
 
 fn main() {
@@ -33,11 +38,23 @@ fn main() {
 
 /// A convenience method that combines all of the steps for the browser to
 /// display the page
+///
+/// At this point it holds all the state... maybe not the best, but we'll work with it
+/// until it doesn't work anymore
 fn browse(url: &str) {
+    // construct our `Ui`.
+    const WIDTH: u32 = 800;
+    const HEIGHT: u32 = 600;
+
+    let mut window_ui = set_up_window();
+
     let (host, port, path, _fragment) = parse_address(url);
     let (_headers, body) = request(&host, &port, &path);
     let text = lex(body);
-    render(&text);
+    let display_list = layout(&text, window_ui.ui.set_widgets());
+
+    //move the ui value to render after setup
+    render(window_ui, &display_list);
 //    show(body);
 }
 
@@ -176,12 +193,40 @@ fn show(body: String) {
     }
 }
 
-fn render(text: &Vec<String>) {
+/// Takes text and returns a display-list of the format (x, y, text)
+fn layout<'a>(text: &'a Vec<String>, ref mut ui: conrod_core::UiCell) -> Vec<(f64, f64, &'a String)> {
+    let mut display_list = Vec::new(); // (x, y, text)
+    //base position
+    let mut x = 13.0;
+    let mut y = 13.0;
+
+    for character in text.iter(){
+        if character == "\n" {
+            x = 13.0;
+            y += 25.0;
+            continue;
+        }
+
+        display_list.push((x, y, character));
+
+        //update for the next character
+        x += 13.0;
+        if x > ui.win_w {
+            y += 18.0;
+            x = 13.0;
+        }
+    }
+
+    return display_list;
+}
+
+fn set_up_window() -> WindowUi {
     const WIDTH: u32 = 800;
     const HEIGHT: u32 = 600;
 
+    let mut ui = conrod_core::UiBuilder::new([WIDTH as f64, HEIGHT as f64]).build();
     // Build the window.
-    let mut events_loop = glium::glutin::EventsLoop::new();
+    let events_loop = glium::glutin::EventsLoop::new();
     let window = glium::glutin::WindowBuilder::new()
         .with_title("Tundra")
         .with_dimensions((WIDTH, HEIGHT).into());
@@ -191,9 +236,6 @@ fn render(text: &Vec<String>) {
     let display = glium::Display::new(window, context, &events_loop).unwrap();
     let display = support::GliumDisplayWinitWrapper(display);
 
-    // construct our `Ui`.
-    let mut ui = conrod_core::UiBuilder::new([WIDTH as f64, HEIGHT as f64]).build();
-
     // Add a `Font` to the `Ui`'s `font::Map` from file.
     let assets = find_folder::Search::KidsThenParents(3, 5).for_folder("assets").unwrap();
     let font_path = assets.join("fonts/NotoSans/NotoSans-Regular.ttf");
@@ -201,26 +243,35 @@ fn render(text: &Vec<String>) {
     let font_path = assets.join("fonts/PingFang-Regular.ttf");
     ui.fonts.insert_from_file(font_path).unwrap();
 
+    return WindowUi {
+        ui,
+        events_loop,
+        display
+    }
+}
+
+fn render(mut window_ui: WindowUi, display_list: &Vec<(f64, f64, &String)>) {
+
     // A type used for converting `conrod_core::render::Primitives` into `Command`s that can be used
     // for drawing to the glium `Surface`.
-    let mut renderer = conrod_glium::Renderer::new(&display.0).unwrap();
+    let mut renderer = conrod_glium::Renderer::new(&window_ui.display.0).unwrap();
 
     // The image map describing each of our widget->image mappings (in our case, none).
     let image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
 
     // Instantiate the generated list of widget identifiers.
-    let ids = &mut Ids::new(ui.widget_id_generator());
+    let ids = &mut Ids::new(window_ui.ui.widget_id_generator());
 
     // Poll events from the window.
     let mut event_loop = support::EventLoop::new();
     'main: loop {
 
         // Handle all events.
-        for event in event_loop.next(&mut events_loop) {
+        for event in event_loop.next(&mut window_ui.events_loop) {
 
             // Use the `winit` backend feature to convert the winit event to a conrod one.
-            if let Some(event) = support::convert_event(event.clone(), &display) {
-                ui.handle_event(event);
+            if let Some(event) = support::convert_event(event.clone(), &window_ui.display) {
+                window_ui.ui.handle_event(event);
                 event_loop.needs_update();
             }
 
@@ -242,50 +293,38 @@ fn render(text: &Vec<String>) {
         }
 
         // Instantiate all widgets in the GUI.
-        set_text(ui.set_widgets(), ids, text);
+        set_text(window_ui.ui.set_widgets(), ids, display_list);
 
         // Render the `Ui` and then display it on the screen.
-        if let Some(primitives) = ui.draw_if_changed() {
-            renderer.fill(&display.0, primitives, &image_map);
-            let mut target = display.0.draw();
+        if let Some(primitives) = window_ui.ui.draw_if_changed() {
+            renderer.fill(&window_ui.display.0, primitives, &image_map);
+            let mut target = window_ui.display.0.draw();
             target.clear_color(0.0, 0.0, 0.0, 1.0);
-            renderer.draw(&display.0, &mut target, &image_map).unwrap();
+            renderer.draw(&window_ui.display.0, &mut target, &image_map).unwrap();
             target.finish().unwrap();
         }
     }
 }
 
-fn set_text(ref mut ui: conrod_core::UiCell, ids: &mut Ids, text: &Vec<String>) {
+fn set_text(ref mut ui: conrod_core::UiCell, ids: &mut Ids, display_list: &Vec<(f64, f64, &String)>) {
     // Construct our main `Canvas` tree.
     // The canvas here is just acting like a glorified background.
     // Normally we would use them to lay out the ui, and anchor elements to them, but
     // we're doing everything on our own, so nahhhh
     widget::Canvas::new().color(color::WHITE).set(ids.master, ui);
-
 //    println!("Rect of {:?}", ui.rect_of(ids.master));
-
     //set the amount of text
-    ids.text.resize(text.len(), &mut ui.widget_id_generator());
+    ids.text.resize(display_list.len(), &mut ui.widget_id_generator());
 
-    //base position
-    let mut x = 13.0;
-    let mut y = 13.0;
-
-    for (i, character) in text.iter().enumerate() {
-        let w = widget::Text::new(character);
+    let mut i = 0;
+    for (x, y, text) in display_list {
+        let w = widget::Text::new(text);
         let w_wh = w.get_wh(ui).unwrap();
-        let rel_pos = rel(ui, w_wh, [x, y]);
+        let rel_pos = rel(ui, w_wh, [*x, *y]);
         w.xy(rel_pos)
             .color(color::BLACK)
             .set(ids.text[i], ui);
-
-        //update for the next character
-        x += 13.0;
-        if x > ui.win_w {
-            y += 18.0;
-            x = 13.0;
-        }
-
+        i += 1;
     }
 }
 
@@ -296,7 +335,7 @@ fn set_text(ref mut ui: conrod_core::UiCell, ids: &mut Ids, text: &Vec<String>) 
 /// the given coordinates
 ///
 /// (0, 0) refers to the top left pixel
-fn rel(ui: &mut conrod_core::UiCell, widget_wh: conrod_core::Dimensions, abs: conrod_core::Point)
+fn rel(ui: &conrod_core::UiCell, widget_wh: conrod_core::Dimensions, abs: conrod_core::Point)
     -> conrod_core::Point {
     //get the window bounds and offsets to apply
     let window_dim = ui.window_dim();
