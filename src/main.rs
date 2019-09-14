@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate conrod_core;
 extern crate conrod_glium;
-#[macro_use]
+//#[macro_use]
 extern crate conrod_winit;
 extern crate find_folder;
 extern crate glium;
@@ -14,8 +14,7 @@ use std::net::TcpStream;
 use std::io::{Write, Read};
 use std::collections::HashMap;
 use glium::Surface;
-use conrod_core::{Color, Colorable, text, Widget};
-use conrod_core::position::Dimension;
+use conrod_core::{color, widget, Colorable, Widget, Positionable, Sizeable};
 
 mod support;
 
@@ -30,13 +29,6 @@ fn main() {
     let url = &args[1].as_str();
 
     browse(url);
-
-    render();
-
-}
-
-fn start_tundra_app() {
-
 }
 
 /// A convenience method that combines all of the steps for the browser to
@@ -44,7 +36,9 @@ fn start_tundra_app() {
 fn browse(url: &str) {
     let (host, port, path, _fragment) = parse_address(url);
     let (_headers, body) = request(&host, &port, &path);
-    show(body);
+    let text = lex(body);
+    render(&text);
+//    show(body);
 }
 
 fn parse_address(url: &str) -> (String, String, String, String) {
@@ -138,6 +132,37 @@ fn request(host: &str, port: &str, path: &str) -> (HashMap<String, String>, Stri
     };
 }
 
+fn lex(body: String) -> Vec<String> {
+    let mut in_angle = false;
+    let mut in_body = false;
+    let mut tag_label = "".to_string();
+    let mut text = Vec::new();
+    for c in body.chars() {
+        if c == '<' {
+            in_angle = true;
+            //reset the tag label
+            tag_label = "".to_string();
+            continue;
+        } else if c == '>' {
+            in_angle = false;
+            continue;
+        }
+        //check for body tag
+        if in_angle {
+            tag_label.push(c);
+        }
+        if "body" == tag_label {
+            //toggle the body bool
+            in_body = !in_body;
+        }
+
+        if in_body && !in_angle {
+            text.push(c.to_string());
+        }
+    }
+    return text;
+}
+
 fn show(body: String) {
     let mut in_angle = false;
     for c in body.chars() {
@@ -151,7 +176,7 @@ fn show(body: String) {
     }
 }
 
-fn render() {
+fn render(text: &Vec<String>) {
     const WIDTH: u32 = 800;
     const HEIGHT: u32 = 600;
 
@@ -172,6 +197,8 @@ fn render() {
     // Add a `Font` to the `Ui`'s `font::Map` from file.
     let assets = find_folder::Search::KidsThenParents(3, 5).for_folder("assets").unwrap();
     let font_path = assets.join("fonts/NotoSans/NotoSans-Regular.ttf");
+    ui.fonts.insert_from_file(font_path).unwrap();
+    let font_path = assets.join("fonts/PingFang-Regular.ttf");
     ui.fonts.insert_from_file(font_path).unwrap();
 
     // A type used for converting `conrod_core::render::Primitives` into `Command`s that can be used
@@ -215,7 +242,7 @@ fn render() {
         }
 
         // Instantiate all widgets in the GUI.
-        set_widgets(ui.set_widgets(), ids);
+        set_text(ui.set_widgets(), ids, text);
 
         // Render the `Ui` and then display it on the screen.
         if let Some(primitives) = ui.draw_if_changed() {
@@ -228,51 +255,62 @@ fn render() {
     }
 }
 
-fn set_widgets(ref mut ui: conrod_core::UiCell, ids: &mut Ids) {
-    use conrod_core::{color, widget, Colorable, Labelable, Positionable, Sizeable, Widget};
-
+fn set_text(ref mut ui: conrod_core::UiCell, ids: &mut Ids, text: &Vec<String>) {
     // Construct our main `Canvas` tree.
+    // The canvas here is just acting like a glorified background.
+    // Normally we would use them to lay out the ui, and anchor elements to them, but
+    // we're doing everything on our own, so nahhhh
     widget::Canvas::new().color(color::WHITE).set(ids.master, ui);
-
-    widget::Rectangle::outline([10., 40.])
-        .color(color::TRANSPARENT)
-        .x(0.0)
-        .y(0.0)
-        .set(ids.rectangle, ui);
 
 //    println!("Rect of {:?}", ui.rect_of(ids.master));
 
     //set the amount of text
-    ids.text.resize(4, &mut ui.widget_id_generator());
-    widget::Text::new("G")
-        .color(color::BLACK)
-        .x_y(-200.0, 200.0)
-        .set(ids.text[0], ui);
-    widget::Text::new("u")
-        .color(color::BLACK)
-        .x_y(-190.0, 200.0)
-        .set(ids.text[1], ui);
-    widget::Text::new("y")
-        .color(color::BLACK)
-        .x_y(-180.0, 200.0)
-        .set(ids.text[2], ui);
-    widget::Text::new("Watson")
-        .color(color::BLACK)
-        .x_y(-140.0, 200.0)
-        .set(ids.text[3], ui);
+    ids.text.resize(text.len(), &mut ui.widget_id_generator());
 
-    //todo: make a helper method that uses `ui.rect_of(ids.text[3])` in order to
-    //  compute the absolute position within the window. The current behavior is
-    //  that (0,0) is the center point of the widget, not the top left.
-    //  I want absolute -> equivalent relative
+    //base position
+    let mut x = 13.0;
+    let mut y = 13.0;
 
+    for (i, character) in text.iter().enumerate() {
+        let w = widget::Text::new(character);
+        let w_wh = w.get_wh(ui).unwrap();
+        let rel_pos = rel(ui, w_wh, [x, y]);
+        w.xy(rel_pos)
+            .color(color::BLACK)
+            .set(ids.text[i], ui);
 
+        //update for the next character
+        x += 13.0;
+        if x > ui.win_w {
+            y += 18.0;
+            x = 13.0;
+        }
 
+    }
+}
 
 
+/// The positioning behavior of conrad is that 0,0 is the middle of the widget.
+/// This function, when given a ui cell, the widget, and a desired absolute position, will
+/// return the necessary relative position to put the widget's top left corner at
+/// the given coordinates
+///
+/// (0, 0) refers to the top left pixel
+fn rel(ui: &mut conrod_core::UiCell, widget_wh: conrod_core::Dimensions, abs: conrod_core::Point)
+    -> conrod_core::Point {
+    //get the window bounds and offsets to apply
+    let window_dim = ui.window_dim();
+    let window_offset_x = -(window_dim[0] / 2.0);
+    let window_offset_y = window_dim[1] / 2.0;
 
+    //get the widget offsets
+    let widget_offset_x = widget_wh[0] / 2.0;
+    let widget_offset_y = -(widget_wh[1] / 2.0);
 
+    let rel_x = abs[0] + window_offset_x + widget_offset_x;
+    let rel_y = -(abs[1]) + window_offset_y + widget_offset_y;
 
+    return [rel_x, rel_y] as conrod_core::Point;
 }
 
 // Generate a unique `WidgetId` for each widget.
@@ -283,31 +321,5 @@ widget_ids! {
         rectangle,
         oval,
         text[],
-        text2,
-//        master,
-//        header,
-//        body,
-//        left_column,
-//        middle_column,
-//        right_column,
-//        footer,
-//        footer_scrollbar,
-//        floating_a,
-//        floating_b,
-//        tabs,
-//        tab_foo,
-//        tab_bar,
-//        tab_baz,
-//
-//        title,
-//        subtitle,
-//        top_left,
-//        bottom_right,
-//        foo_label,
-//        bar_label,
-//        baz_label,
-//        button_matrix,
-//        bing,
-//        bong,
     }
 }
