@@ -18,7 +18,9 @@ use conrod_core::{color, widget, Colorable, Widget, Positionable, Sizeable};
 
 mod support;
 
-
+const SCROLL_STEP: f64 = 20.0;
+const INIT_WIDTH: u32 = 800;
+const INIT_HEIGHT: u32 = 600;
 
 
 fn main() {
@@ -28,7 +30,7 @@ fn main() {
     }
     let url = &args[1].as_str();
 
-    let tundra = Tundra::new();
+    let mut tundra = Tundra::new();
 
     tundra.browse(url);
 }
@@ -36,19 +38,25 @@ fn main() {
 struct WindowUi {
     ui : conrod_core::Ui,
     events_loop: glium::glutin::EventsLoop,
-    display: support::GliumDisplayWinitWrapper
+    display: support::GliumDisplayWinitWrapper,
 }
 
 struct Tundra {
-    scroll_y : i32
+    window_height : u32,
+    window_width : u32,
+    scroll_y : f64,
+    display_list: Vec<(f64, f64, String)>
 }
 
 impl Tundra {
 
     fn new() -> Tundra {
-        return Tundra{
-            scroll_y: 0
-        }
+        return Tundra {
+            scroll_y: 0.0,
+            display_list: Vec::new(),
+            window_height: INIT_HEIGHT,
+            window_width: INIT_WIDTH
+        };
     }
     /// A convenience method that combines all of the steps for the browser to
 /// display the page
@@ -56,17 +64,17 @@ impl Tundra {
 /// At this point it holds all the state... maybe not the best, but we'll work with it
 /// until it doesn't work anymore
 /// I may have hit that point with scrolling. I need to store the state, so it needs to be in an object
-    fn browse(&self, url: &str) {
+    fn browse(&mut self, url: &str) {
         // construct our `Ui`.
         let mut window_ui = self.set_up_window();
 
         let (host, port, path, _fragment) = self.parse_address(url);
         let (_headers, body) = self.request(&host, &port, &path);
         let text = self.lex(body);
-        let display_list = self.layout(&text, window_ui.ui.set_widgets());
+        self.layout(&text, window_ui.ui.set_widgets());
 
         //move the ui value to render after setup
-        self.render(window_ui, &display_list);
+        self.render(window_ui);
     }
 
     fn parse_address(&self, url: &str) -> (String, String, String, String) {
@@ -192,8 +200,7 @@ impl Tundra {
     }
 
     /// Takes text and returns a display-list of the format (x, y, text)
-    fn layout<'a>(&self, text: &'a Vec<String>, ref mut ui: conrod_core::UiCell) -> Vec<(f64, f64, &'a String)> {
-        let mut display_list = Vec::new(); // (x, y, text)
+    fn layout(&mut self, text: &Vec<String>, ref mut ui: conrod_core::UiCell) {
         //base position
         let mut x = 13.0;
         let mut y = 13.0;
@@ -205,7 +212,9 @@ impl Tundra {
                 continue;
             }
 
-            display_list.push((x, y, character));
+            //we can move the data to our own struct
+            // This avoids lifetime hell
+            self.display_list.push((x, y, character.to_owned()));
 
             //update for the next character
             x += 13.0;
@@ -214,20 +223,15 @@ impl Tundra {
                 x = 13.0;
             }
         }
-
-        return display_list;
     }
 
     fn set_up_window(&self) -> WindowUi {
-        const WIDTH: u32 = 800;
-        const HEIGHT: u32 = 600;
-
-        let mut ui = conrod_core::UiBuilder::new([WIDTH as f64, HEIGHT as f64]).build();
+        let mut ui = conrod_core::UiBuilder::new([INIT_WIDTH as f64, INIT_HEIGHT as f64]).build();
         // Build the window.
         let events_loop = glium::glutin::EventsLoop::new();
         let window = glium::glutin::WindowBuilder::new()
             .with_title("Tundra")
-            .with_dimensions((WIDTH, HEIGHT).into());
+            .with_dimensions((INIT_WIDTH, INIT_HEIGHT).into());
         let context = glium::glutin::ContextBuilder::new()
             .with_vsync(true)
             .with_multisampling(4);
@@ -248,7 +252,7 @@ impl Tundra {
         }
     }
 
-    fn render(&self, mut window_ui: WindowUi, display_list: &Vec<(f64, f64, &String)>) {
+    fn render(&mut self, mut window_ui: WindowUi) {
 
         // A type used for converting `conrod_core::render::Primitives` into `Command`s that can be used
         // for drawing to the glium `Surface`.
@@ -274,6 +278,10 @@ impl Tundra {
                 }
 
                 match event {
+                    // scrolling logic here
+                    // Since we're doing this ourselves, we can't rely on the scrolling behavior
+                    // of the widgets. The button presses have to be intercepted here in order
+                    // to affect the global state (In this case scroll_y)
                     glium::glutin::Event::WindowEvent { event, .. } => match event {
                         // Break from the loop upon `Escape`.
                         glium::glutin::WindowEvent::CloseRequested |
@@ -284,6 +292,21 @@ impl Tundra {
                             },
                             ..
                         } => break 'main,
+                        glium::glutin::WindowEvent::KeyboardInput {
+                            input: glium::glutin::KeyboardInput {
+                                virtual_keycode: Some(glium::glutin::VirtualKeyCode::Down),
+                                ele
+                                ..
+                            },
+                            ..
+                        } => self.scroll_down(),
+                        glium::glutin::WindowEvent::KeyboardInput {
+                            input: glium::glutin::KeyboardInput {
+                                virtual_keycode: Some(glium::glutin::VirtualKeyCode::Up),
+                                ..
+                            },
+                            ..
+                        } => self.scroll_up(),
                         _ => (),
                     },
                     _ => (),
@@ -291,7 +314,7 @@ impl Tundra {
             }
 
             // Instantiate all widgets in the GUI.
-            self.set_text(window_ui.ui.set_widgets(), ids, display_list);
+            self.set_text(window_ui.ui.set_widgets(), ids);
 
             // Render the `Ui` and then display it on the screen.
             if let Some(primitives) = window_ui.ui.draw_if_changed() {
@@ -304,26 +327,45 @@ impl Tundra {
         }
     }
 
-    fn set_text(&self, ref mut ui: conrod_core::UiCell, ids: &mut Ids, display_list: &Vec<(f64, f64, &String)>) {
+    fn set_text(&mut self, ref mut ui: conrod_core::UiCell, ids: &mut Ids) {
         // Construct our main `Canvas` tree.
         // The canvas here is just acting like a glorified background.
         // Normally we would use them to lay out the ui, and anchor elements to them, but
         // we're doing everything on our own, so nahhhh
-        widget::Canvas::new().color(color::WHITE).set(ids.master, ui);
-//    println!("Rect of {:?}", ui.rect_of(ids.master));
-        //set the amount of text
-        ids.text.resize(display_list.len(), &mut ui.widget_id_generator());
+        let _canvas = widget::Canvas::new()
+            .color(color::WHITE)
+            .set(ids.master, ui);
 
-        let mut i = 0;
-        for (x, y, text) in display_list {
-            let w = widget::Text::new(text);
-            let w_wh = w.get_wh(ui).unwrap();
-            let rel_pos = self.rel(ui, w_wh, [*x, *y]);
-            w.xy(rel_pos)
-                .color(color::BLACK)
-                .set(ids.text[i], ui);
-            i += 1;
+        //set the amount of text
+        //We could be more memory efficient by only taking up space we need, but eh
+        ids.text.resize(self.display_list.len(), &mut ui.widget_id_generator());
+
+//        let mut i = 0;
+
+        //manual loop because I can't figure out how to borrow the display_list text
+        for i in 0..self.display_list.len() {
+            let x = self.display_list[i].0;
+            let y = self.display_list[i].1;
+
+            if y > self.scroll_y && y < self.scroll_y + self.window_height as f64 {
+                let text = self.display_list[i].2.clone(); //have to clone because it's part of a tuple
+                let w = widget::Text::new(&text);
+                let w_wh = w.get_wh(ui).unwrap();
+                let rel_pos = self.rel(ui, w_wh, [x, y - self.scroll_y]);
+                w.xy(rel_pos)
+                    .color(color::BLACK)
+                    .set(ids.text[i], ui);
+            }
         }
+//        for (x, y, text) in &self.display_list.as_mut() {
+//            let w = widget::Text::new(&text);
+//            let w_wh = w.get_wh(ui).unwrap();
+//            let rel_pos = self.rel(ui, w_wh, [x, y - self.scroll_y]);
+//            w.xy(rel_pos)
+//                .color(color::BLACK)
+//                .set(ids.text[i], ui);
+//            i += 1;
+//        }
     }
 
 
@@ -333,7 +375,7 @@ impl Tundra {
 /// the given coordinates
 ///
 /// (0, 0) refers to the top left pixel
-    fn rel(&self, ui: &conrod_core::UiCell, widget_wh: conrod_core::Dimensions, abs: conrod_core::Point)
+    fn rel(&mut self, ui: &conrod_core::UiCell, widget_wh: conrod_core::Dimensions, abs: conrod_core::Point)
            -> conrod_core::Point {
         //get the window bounds and offsets to apply
         let window_dim = ui.window_dim();
@@ -348,6 +390,28 @@ impl Tundra {
         let rel_y = -(abs[1]) + window_offset_y + widget_offset_y;
 
         return [rel_x, rel_y] as conrod_core::Point;
+    }
+
+    fn scroll_down(&mut self) {
+        self.scroll_y += SCROLL_STEP;
+
+        // Don't scroll past the bottom of the page
+        let (_, last_y, _) = self.display_list.last().unwrap().clone();
+
+        if self.scroll_y > last_y - self.window_height as f64 {
+            self.scroll_y = last_y - self.window_height as f64;
+        }
+
+        //todo: rerender
+    }
+
+    fn scroll_up(&mut self) {
+        self.scroll_y -= SCROLL_STEP;
+
+        if self.scroll_y < 0.0 {
+            self.scroll_y = 0.0;
+        }
+        //todo: rerender
     }
 }
 
