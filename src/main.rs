@@ -39,6 +39,10 @@ struct WindowUi {
     ui : conrod_core::Ui,
     events_loop: glium::glutin::EventsLoop,
     display: support::GliumDisplayWinitWrapper,
+    font: conrod_core::text::font::Id,
+    font_b: conrod_core::text::font::Id,
+    font_i: conrod_core::text::font::Id,
+    font_bi: conrod_core::text::font::Id,
 }
 
 struct Tundra {
@@ -241,14 +245,24 @@ impl Tundra {
         // Add a `Font` to the `Ui`'s `font::Map` from file.
         let assets = find_folder::Search::KidsThenParents(3, 5).for_folder("assets").unwrap();
         let font_path = assets.join("fonts/NotoSans/NotoSans-Regular.ttf");
-        ui.fonts.insert_from_file(font_path).unwrap();
+        let font = ui.fonts.insert_from_file(font_path).unwrap();
+        let font_path = assets.join("fonts/NotoSans/NotoSans-Bold.ttf");
+        let font_b = ui.fonts.insert_from_file(font_path).unwrap();
+        let font_path = assets.join("fonts/NotoSans/NotoSans-Italic.ttf");
+        let font_i = ui.fonts.insert_from_file(font_path).unwrap();
+        let font_path = assets.join("fonts/NotoSans/NotoSans-BoldItalic.ttf");
+        let font_bi = ui.fonts.insert_from_file(font_path).unwrap();
         let font_path = assets.join("fonts/PingFang-Regular.ttf");
         ui.fonts.insert_from_file(font_path).unwrap();
 
         return WindowUi {
             ui,
             events_loop,
-            display
+            display,
+            font,
+            font_b,
+            font_i,
+            font_bi,
         }
     }
 
