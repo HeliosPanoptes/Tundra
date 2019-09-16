@@ -208,7 +208,7 @@ impl Tundra {
         for character in text.iter() {
             if character == "\n" {
                 x = 13.0;
-                y += 25.0;
+                y += 30.0;
                 continue;
             }
 
@@ -218,7 +218,7 @@ impl Tundra {
 
             //update for the next character
             x += 13.0;
-            if x > ui.win_w {
+            if x > (ui.win_w - 13.0) {
                 y += 18.0;
                 x = 13.0;
             }
@@ -295,7 +295,6 @@ impl Tundra {
                         glium::glutin::WindowEvent::KeyboardInput {
                             input: glium::glutin::KeyboardInput {
                                 virtual_keycode: Some(glium::glutin::VirtualKeyCode::Down),
-                                ele
                                 ..
                             },
                             ..
