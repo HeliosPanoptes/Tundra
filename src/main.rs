@@ -86,6 +86,8 @@ impl Tundra {
 
         let (host, port, path, _fragment) = self.parse_address(url);
         let (_headers, body) = self.request(&host, &port, &path);
+        //test case for spaces and bounding rects being applied correctly
+        //let body = "<p>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa a</p>".to_string();
         let text = self.lex(body);
         self.layout(&text, &mut window_ui);
 
@@ -275,17 +277,20 @@ impl Tundra {
 
                     for (i, word) in words.enumerate() {
                         //make a dummy version to let conrod do the hard work of the layout.
+
                         let w = widget::Text::new(&word)
+                            .color(color::BLACK)
                             .font_id(current_font)
                             .font_size(16)
                             .line_spacing(1.2);
-                        let w_w = w.get_w(ui).unwrap();
-                        let w_h = w.get_h(ui).unwrap();
+                        let w_wh = w.get_wh(ui).unwrap();
+//                        let w = w.xy(rel_pos)
+//                            .set(ids.text[i], ui); //thumbtack
 
-                        if (x + w_w) > (ui.win_w - 13.0) {
-                            y += w_h;
+                        if (x + w_wh[0]) > (ui.win_w - 13.0) {
+                            y += w_wh[1] * 1.2;
                             x = 13.0;
-                        }
+                        };
                         let display_list_item = DisplayListItem {
                             x, y, text: word.to_owned(), font: current_font };
 
@@ -294,8 +299,8 @@ impl Tundra {
                         let mut whitespace = whitespace_w;
                         if i == (wordcount - 1) {
                             whitespace = 0.0;
-                        }
-                        x += w_w + whitespace;
+                        };
+                        x += w_wh[0] + whitespace;
                     }
                     // Add a whitespace if the last character is a space
                     terminal_space = text.ends_with(" ");
@@ -456,6 +461,7 @@ impl Tundra {
         //set the amount of text
         //We could be more memory efficient by only taking up space we need, but eh
         ids.text.resize(self.display_list.len(), &mut ui.widget_id_generator());
+        ids.rectangles.resize(self.display_list.len(), &mut ui.widget_id_generator());
 
 //        let mut i = 0;
 
@@ -466,14 +472,25 @@ impl Tundra {
 
             if y > self.scroll_y && y < self.scroll_y + self.window_height as f64 {
                 let text = &self.display_list[i].text.clone();
-                let w = widget::Text::new(text);
-                let w_wh = w.get_wh(ui).unwrap();
-                let rel_pos = self.rel(ui, w_wh, [x, y - self.scroll_y]);
-                w.xy(rel_pos)
+
+
+                // MUST SET FONT BEFORE GETTING DIMENSIONS
+                let w = widget::Text::new(text)
                     .color(color::BLACK)
                     .font_id(self.display_list[i].font)
                     .font_size(16)
+                    .line_spacing(1.2);
+                let w_wh = w.get_wh(ui).unwrap();
+                let rel_pos = self.rel(ui, w_wh, [x, y - self.scroll_y]);
+                let w = w.xy(rel_pos)
                     .set(ids.text[i], ui); //thumbtack
+
+                //let r = widget::BorderedRectangle::new(w_wh)
+                //    .xy(rel_pos)
+                //    .color(color::TRANSPARENT)
+                //    .set(ids.rectangles[i], ui);
+
+                //draw a rectangle around the word widget as well
             }
         }
 //        for (x, y, text) in &self.display_list.as_mut() {
@@ -544,5 +561,6 @@ widget_ids! {
             oval,
             text[],
             dummy_text, //for use in laying out text
+            rectangles[],
         }
     }
