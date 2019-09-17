@@ -19,9 +19,10 @@ use conrod_core::{color, widget, Colorable, Widget, Positionable, Sizeable};
 mod support;
 
 const SCROLL_STEP: f64 = 20.0;
-const INIT_WIDTH: u32 = 800;
-const INIT_HEIGHT: u32 = 600;
-
+const INIT_WIDTH: f64 = 800.0;
+const INIT_HEIGHT: f64 = 600.0;
+const FONT_SIZE: i32 = 16;
+const LINE_SPACING: f32 = 1.2;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -53,9 +54,10 @@ struct DisplayListItem {
 }
 
 struct Tundra {
-    window_height : u32,
-    window_width : u32,
+    window_height : f64,
+    window_width : f64,
     scroll_y : f64,
+    tokens: Vec<Token>,
     display_list: Vec<DisplayListItem>
 }
 
@@ -68,10 +70,11 @@ impl Tundra {
 
     fn new() -> Tundra {
         return Tundra {
-            scroll_y: 0.0,
-            display_list: Vec::new(),
             window_height: INIT_HEIGHT,
-            window_width: INIT_WIDTH
+            window_width: INIT_WIDTH,
+            scroll_y: 0.0,
+            tokens: Vec::new(),
+            display_list: Vec::new(),
         };
     }
     /// A convenience method that combines all of the steps for the browser to
@@ -86,12 +89,12 @@ impl Tundra {
 
         let (host, port, path, _fragment) = self.parse_address(url);
         let (_headers, body) = self.request(&host, &port, &path);
-        //test case for spaces and bounding rects being applied correctly
+        // test case for spaces and bounding rects being applied correctly
+        //   correct: tight boxes and a proper space. incorrect: extra space in the boxes and overlap
         //let body = "<p>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa a</p>".to_string();
-        let text = self.lex(body);
-        self.layout(&text, &mut window_ui);
+        self.lex(body);
+        self.layout(&mut window_ui);
 
-        //move the ui value to render after setup
         self.render(&mut window_ui);
     }
 
@@ -186,8 +189,8 @@ impl Tundra {
         };
     }
 
-    fn lex(&self, source: String) -> Vec<Token> {
-        let mut out : Vec<Token> = Vec::new();
+    fn lex(&mut self, source: String) {
+        let mut tokens : Vec<Token> = Vec::new();
         let mut text : String = "".to_string();
         let mut in_angle = false;
         for c in source.chars() {
@@ -195,24 +198,26 @@ impl Tundra {
                 in_angle = true;
                 //store the text so far and reset
                 if !text.is_empty() {
-                    out.push(Token::Text(text.to_string()));
+                    tokens.push(Token::Text(text.to_string()));
                 }
                 text = "".to_string();
             } else if c == '>' {
                 in_angle = false;
                 //store the tag and reset
-                out.push(Token::Tag(text.to_string()));
+                tokens.push(Token::Tag(text.to_string()));
                 text = "".to_string();
             }
             else {
                 text.push(c);
             }
         }
-        return out;
+        self.tokens = tokens;
     }
 
     /// Takes text and returns a display-list of the format (x, y, text)
-    fn layout(&mut self, tokens: &Vec<Token>, window_ui: &mut WindowUi) {
+    fn layout(&mut self, window_ui: &mut WindowUi) {
+        // clear the display list, especially when re-laying out
+        self.display_list.clear();
         // Old only show the body code
         //todo: move this to layout
 //        let mut in_angle = false;
@@ -259,7 +264,7 @@ impl Tundra {
 
         let mut terminal_space = true;
 
-        for token in tokens.iter() {
+        for token in self.tokens.iter() {
             let w = widget::Text::new(" ")
                 .font_id(current_font)
                 .font_size(16);
@@ -277,17 +282,15 @@ impl Tundra {
 
                     for (i, word) in words.enumerate() {
                         //make a dummy version to let conrod do the hard work of the layout.
-
+                        // *** MUST SET FONT BEFORE GETTING DIMENSIONS ***
                         let w = widget::Text::new(&word)
                             .color(color::BLACK)
                             .font_id(current_font)
                             .font_size(16)
                             .line_spacing(1.2);
                         let w_wh = w.get_wh(ui).unwrap();
-//                        let w = w.xy(rel_pos)
-//                            .set(ids.text[i], ui); //thumbtack
 
-                        if (x + w_wh[0]) > (ui.win_w - 13.0) {
+                        if (x + w_wh[0]) > (self.window_width - 13.0) {
                             y += w_wh[1] * 1.2;
                             x = 13.0;
                         };
@@ -307,7 +310,6 @@ impl Tundra {
                     if terminal_space && wordcount > 0 {
                         x += whitespace_w;
                     }
-
                 },
 
                 Token::Tag(tag) => {
@@ -374,8 +376,7 @@ impl Tundra {
         }
     }
 
-    fn render(&mut self, window_ui: &mut WindowUi) {
-
+    fn render(&mut self, mut window_ui: &mut WindowUi) {
         // A type used for converting `conrod_core::render::Primitives` into `Command`s that can be used
         // for drawing to the glium `Surface`.
         let mut renderer = conrod_glium::Renderer::new(&window_ui.display.0).unwrap();
@@ -384,7 +385,6 @@ impl Tundra {
         let image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
 
         // Instantiate the generated list of widget identifiers.
-        let mut ui = &window_ui.ui;
         let ids = &mut Ids::new(window_ui.ui.widget_id_generator());
 
         // Poll events from the window.
@@ -433,7 +433,7 @@ impl Tundra {
                     },
                     _ => (),
                 }
-            }
+            } //...end events loop
 
             // Instantiate all widgets in the GUI.
             self.set_text(window_ui.ui.set_widgets(), ids);
@@ -446,7 +446,15 @@ impl Tundra {
                 renderer.draw(&window_ui.display.0, &mut target, &image_map).unwrap();
                 target.finish().unwrap();
             }
-        }
+
+            // Re-do layout if necessary
+            if window_ui.ui.win_w != self.window_width || window_ui.ui.win_h != self.window_height {
+                self.window_width = window_ui.ui.win_w;
+                self.window_height = window_ui.ui.win_h;
+                self.layout(&mut window_ui);
+//                window_ui.ui.needs_redraw();
+            }
+        } //...end draw loop
     }
 
     fn set_text(&mut self, ref mut ui: conrod_core::UiCell, ids: &mut Ids) {
@@ -461,9 +469,7 @@ impl Tundra {
         //set the amount of text
         //We could be more memory efficient by only taking up space we need, but eh
         ids.text.resize(self.display_list.len(), &mut ui.widget_id_generator());
-        ids.rectangles.resize(self.display_list.len(), &mut ui.widget_id_generator());
-
-//        let mut i = 0;
+//        ids.rectangles.resize(self.display_list.len(), &mut ui.widget_id_generator());
 
         //manual loop because I can't figure out how to borrow the display_list text
         for i in 0..self.display_list.len() {
@@ -474,7 +480,7 @@ impl Tundra {
                 let text = &self.display_list[i].text.clone();
 
 
-                // MUST SET FONT BEFORE GETTING DIMENSIONS
+                // *** MUST SET FONT BEFORE GETTING DIMENSIONS ***
                 let w = widget::Text::new(text)
                     .color(color::BLACK)
                     .font_id(self.display_list[i].font)
@@ -482,26 +488,16 @@ impl Tundra {
                     .line_spacing(1.2);
                 let w_wh = w.get_wh(ui).unwrap();
                 let rel_pos = self.rel(ui, w_wh, [x, y - self.scroll_y]);
-                let w = w.xy(rel_pos)
-                    .set(ids.text[i], ui); //thumbtack
+                w.xy(rel_pos)
+                    .set(ids.text[i], ui);
 
+                //draw a rectangle around the word widget as well (debug help)
                 //let r = widget::BorderedRectangle::new(w_wh)
                 //    .xy(rel_pos)
                 //    .color(color::TRANSPARENT)
                 //    .set(ids.rectangles[i], ui);
-
-                //draw a rectangle around the word widget as well
             }
         }
-//        for (x, y, text) in &self.display_list.as_mut() {
-//            let w = widget::Text::new(&text);
-//            let w_wh = w.get_wh(ui).unwrap();
-//            let rel_pos = self.rel(ui, w_wh, [x, y - self.scroll_y]);
-//            w.xy(rel_pos)
-//                .color(color::BLACK)
-//                .set(ids.text[i], ui);
-//            i += 1;
-//        }
     }
 
 
@@ -537,8 +533,6 @@ impl Tundra {
         if self.scroll_y > last_y - self.window_height as f64 {
             self.scroll_y = last_y - self.window_height as f64;
         }
-
-        //todo: rerender
     }
 
     fn scroll_up(&mut self) {
@@ -547,7 +541,6 @@ impl Tundra {
         if self.scroll_y < 0.0 {
             self.scroll_y = 0.0;
         }
-        //todo: rerender
     }
 }
 
