@@ -21,8 +21,8 @@ mod support;
 const SCROLL_STEP: f64 = 20.0;
 const INIT_WIDTH: f64 = 800.0;
 const INIT_HEIGHT: f64 = 600.0;
-const FONT_SIZE: i32 = 16;
-const LINE_SPACING: f32 = 1.2;
+const FONT_SIZE: u32 = 16;
+const LINE_SPACING: f64 = 1.2;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -267,7 +267,7 @@ impl Tundra {
         for token in self.tokens.iter() {
             let w = widget::Text::new(" ")
                 .font_id(current_font)
-                .font_size(16);
+                .font_size(FONT_SIZE);
             let linespace_h = w.get_h(ui).unwrap();
             let whitespace_w = w.get_w(ui).unwrap();
 
@@ -286,12 +286,12 @@ impl Tundra {
                         let w = widget::Text::new(&word)
                             .color(color::BLACK)
                             .font_id(current_font)
-                            .font_size(16)
-                            .line_spacing(1.2);
+                            .font_size(FONT_SIZE)
+                            .line_spacing(LINE_SPACING);
                         let w_wh = w.get_wh(ui).unwrap();
 
                         if (x + w_wh[0]) > (self.window_width - 13.0) {
-                            y += w_wh[1] * 1.2;
+                            y += w_wh[1] * LINE_SPACING;
                             x = 13.0;
                         };
                         let display_list_item = DisplayListItem {
@@ -322,7 +322,7 @@ impl Tundra {
                         "/p" => {
                             terminal_space = true;
                             x = 13.0;
-                            y += linespace_h * 1.2 + 16.0;
+                            y += linespace_h * LINE_SPACING + 16.0;
                         }
                         _ => ()
                     }
@@ -484,8 +484,8 @@ impl Tundra {
                 let w = widget::Text::new(text)
                     .color(color::BLACK)
                     .font_id(self.display_list[i].font)
-                    .font_size(16)
-                    .line_spacing(1.2);
+                    .font_size(FONT_SIZE)
+                    .line_spacing(LINE_SPACING);
                 let w_wh = w.get_wh(ui).unwrap();
                 let rel_pos = self.rel(ui, w_wh, [x, y - self.scroll_y]);
                 w.xy(rel_pos)
