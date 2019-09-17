@@ -15,6 +15,7 @@ use std::io::{Write, Read};
 use std::collections::HashMap;
 use glium::Surface;
 use conrod_core::{color, widget, Colorable, Widget, Positionable, Sizeable};
+use std::ops::Deref;
 
 mod support;
 
@@ -52,6 +53,11 @@ struct Tundra {
     display_list: Vec<(f64, f64, String)>
 }
 
+enum Token {
+    Text(String),
+    Tag(String),
+}
+
 impl Tundra {
 
     fn new() -> Tundra {
@@ -75,10 +81,10 @@ impl Tundra {
         let (host, port, path, _fragment) = self.parse_address(url);
         let (_headers, body) = self.request(&host, &port, &path);
         let text = self.lex(body);
-        self.layout(&text, window_ui.ui.set_widgets());
+        self.layout(&text, &mut window_ui);
 
         //move the ui value to render after setup
-        self.render(window_ui);
+        self.render(&mut window_ui);
     }
 
     fn parse_address(&self, url: &str) -> (String, String, String, String) {
@@ -172,62 +178,139 @@ impl Tundra {
         };
     }
 
-    fn lex(&self, body: String) -> Vec<String> {
+    fn lex(&self, source: String) -> Vec<Token> {
+        let mut out : Vec<Token> = Vec::new();
+        let mut text : String = "".to_string();
         let mut in_angle = false;
-        let mut in_body = false;
-        let mut tag_label = "".to_string();
-        let mut text = Vec::new();
-        for c in body.chars() {
+        for c in source.chars() {
             if c == '<' {
                 in_angle = true;
-                //reset the tag label
-                tag_label = "".to_string();
-                continue;
+                //store the text so far and reset
+                if !text.is_empty() {
+                    out.push(Token::Text(text.to_string()));
+                }
+                text = "".to_string();
             } else if c == '>' {
                 in_angle = false;
-                continue;
+                //store the tag and reset
+                out.push(Token::Tag(text.to_string()));
+                text = "".to_string();
             }
-            //check for body tag
-            if in_angle {
-                tag_label.push(c);
-            }
-            if "body" == tag_label {
-                //toggle the body bool
-                in_body = !in_body;
-            }
-
-            if in_body && !in_angle {
-                text.push(c.to_string());
+            else {
+                text.push(c);
             }
         }
-        return text;
+        return out;
     }
 
     /// Takes text and returns a display-list of the format (x, y, text)
-    fn layout(&mut self, text: &Vec<String>, ref mut ui: conrod_core::UiCell) {
+    fn layout(&mut self, tokens: &Vec<Token>, window_ui: &mut WindowUi) {
+        // Old only show the body code
+        //todo: move this to layout
+//        let mut in_angle = false;
+//        let mut in_body = false;
+//        let mut tag_label = "".to_string();
+//        let mut text = Vec::new();
+//        for c in body.chars() {
+//            if c == '<' {
+//                in_angle = true;
+//                //reset the tag label
+//                tag_label = "".to_string();
+//                continue;
+//            } else if c == '>' {
+//                in_angle = false;
+//                continue;
+//            }
+//            //check for body tag
+//            if in_angle {
+//                tag_label.push(c);
+//            }
+//            if "body" == tag_label {
+//                in_body = !in_body;
+//            }
+//            if in_body && !in_angle {
+//                text.push(c.to_string());
+//            }
+//        }
+//        return text;
+
         //base position
         let mut x = 13.0;
         let mut y = 13.0;
 
-        for character in text.iter() {
-            if character == "\n" {
-                x = 13.0;
-                y += 30.0;
-                continue;
-            }
+        //convenience
+        let ref ui = window_ui.ui;
+        let f = window_ui.font;
+        let f_b = window_ui.font_b;
+        let f_i = window_ui.font_i;
+        let f_bi = window_ui.font_bi;
 
-            //we can move the data to our own struct
-            // This avoids lifetime hell
-            self.display_list.push((x, y, character.to_owned()));
+        let mut bold = false;
+        let mut italic = false;
+        let mut current_font = f;
 
-            //update for the next character
-            x += 13.0;
-            if x > (ui.win_w - 13.0) {
-                y += 18.0;
-                x = 13.0;
-            }
-        }
+        for token in tokens.iter() {
+            match token {
+                Token::Text(text) => {
+                    for word in text.split_whitespace() {
+                        //make a dummy version to let conrod do the hard work of the layout.
+                        let w = widget::Text::new(&text)
+                            .font_id(current_font)
+                            .font_size(16)
+                            .line_spacing(1.2);
+                        let w_w = w.get_w(ui).unwrap();
+                        let w_h = w.get_h(ui).unwrap();
+
+                        if (x + w_w) > (ui.win_w - 13.0) {
+                            y += w_h;
+                            x = 13.0;
+                        }
+                        self.display_list.push((x, y, text.to_owned()));
+
+                        //add a whitespace
+                        x += 5.0;
+                    };
+
+                },
+                Token::Tag(tag) => {
+                    let tag = tag.as_str();
+                    match tag {
+                        "i" => italic = true,
+                        "/i" => italic = false,
+                        "b" => bold = true,
+                        "/b" => bold = false,
+                        _ => ()
+                    }
+
+                    //set the font style
+                    match (bold, italic) {
+                        (false, false) => current_font = f,
+                        (true, false)  => current_font = f_b,
+                        (false, true)  => current_font = f_i,
+                        (true, true)   => current_font = f_bi,
+                    }
+
+                }
+            };
+        };
+//            if character == "\n" {
+//                x = 13.0;
+//                y += 30.0;
+//                continue;
+//            };
+//
+//            //we can move the data to our own struct
+//            // This avoids lifetime hell
+//            self.display_list.push((x, y, character.to_owned()));
+//
+//            //update for the next character
+//            x += 13.0;
+//            if x > (ui.win_w - 13.0) {
+//                y += 18.0;
+//                x = 13.0;
+//            }
     }
+
 
     fn set_up_window(&self) -> WindowUi {
         let mut ui = conrod_core::UiBuilder::new([INIT_WIDTH as f64, INIT_HEIGHT as f64]).build();
@@ -252,8 +335,8 @@ impl Tundra {
         let font_i = ui.fonts.insert_from_file(font_path).unwrap();
         let font_path = assets.join("fonts/NotoSans/NotoSans-BoldItalic.ttf");
         let font_bi = ui.fonts.insert_from_file(font_path).unwrap();
-        let font_path = assets.join("fonts/PingFang-Regular.ttf");
-        ui.fonts.insert_from_file(font_path).unwrap();
+//        let font_path = assets.join("fonts/PingFang-Regular.ttf");
+//        ui.fonts.insert_from_file(font_path).unwrap();
 
         return WindowUi {
             ui,
@@ -266,7 +349,7 @@ impl Tundra {
         }
     }
 
-    fn render(&mut self, mut window_ui: WindowUi) {
+    fn render(&mut self, window_ui: &mut WindowUi) {
 
         // A type used for converting `conrod_core::render::Primitives` into `Command`s that can be used
         // for drawing to the glium `Surface`.
@@ -276,6 +359,7 @@ impl Tundra {
         let image_map = conrod_core::image::Map::<glium::texture::Texture2d>::new();
 
         // Instantiate the generated list of widget identifiers.
+        let mut ui = &window_ui.ui;
         let ids = &mut Ids::new(window_ui.ui.widget_id_generator());
 
         // Poll events from the window.
@@ -437,5 +521,6 @@ widget_ids! {
             rectangle,
             oval,
             text[],
+            dummy_text, //for use in laying out text
         }
     }
