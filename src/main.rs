@@ -192,17 +192,14 @@ impl Tundra {
     fn lex(&mut self, source: String) {
         let mut tokens : Vec<Token> = Vec::new();
         let mut text : String = "".to_string();
-        let mut in_angle = false;
         for c in source.chars() {
             if c == '<' {
-                in_angle = true;
                 //store the text so far and reset
                 if !text.is_empty() {
                     tokens.push(Token::Text(text.to_string()));
                 }
                 text = "".to_string();
             } else if c == '>' {
-                in_angle = false;
                 //store the tag and reset
                 tokens.push(Token::Tag(text.to_string()));
                 text = "".to_string();
@@ -218,34 +215,6 @@ impl Tundra {
     fn layout(&mut self, window_ui: &mut WindowUi) {
         // clear the display list, especially when re-laying out
         self.display_list.clear();
-        // Old only show the body code
-        //todo: move this to layout
-//        let mut in_angle = false;
-//        let mut in_body = false;
-//        let mut tag_label = "".to_string();
-//        let mut text = Vec::new();
-//        for c in body.chars() {
-//            if c == '<' {
-//                in_angle = true;
-//                //reset the tag label
-//                tag_label = "".to_string();
-//                continue;
-//            } else if c == '>' {
-//                in_angle = false;
-//                continue;
-//            }
-//            //check for body tag
-//            if in_angle {
-//                tag_label.push(c);
-//            }
-//            if "body" == tag_label {
-//                in_body = !in_body;
-//            }
-//            if in_body && !in_angle {
-//                text.push(c.to_string());
-//            }
-//        }
-//        return text;
 
         //base position
         let mut x: f64 = 13.0;
@@ -263,6 +232,8 @@ impl Tundra {
         let mut current_font = f;
 
         let mut terminal_space = true;
+        let mut in_body = false;
+
 
         for token in self.tokens.iter() {
             let w = widget::Text::new(" ")
@@ -273,6 +244,10 @@ impl Tundra {
 
             match token {
                 Token::Text(text) => {
+                    //only print the body
+                    if !in_body {
+                        continue;
+                    }
                     let words = text.split_whitespace();
                     let wordcount = words.clone().count();
 
@@ -315,6 +290,8 @@ impl Tundra {
                 Token::Tag(tag) => {
                     let tag = tag.as_str();
                     match tag {
+                        "body" => in_body = true,
+                        "/body" => in_body = false,
                         "i" => italic = true,
                         "/i" => italic = false,
                         "b" => bold = true,
@@ -323,7 +300,19 @@ impl Tundra {
                             terminal_space = true;
                             x = 13.0;
                             y += linespace_h * LINE_SPACING + 16.0;
-                        }
+                        },
+                        "h1" => {
+                            bold = true;
+                            x = 13.0;
+                            y += linespace_h * LINE_SPACING + 16.0;
+                        },
+                        "/h1" => {
+                            bold = false;
+                            terminal_space = true;
+                            x = 13.0;
+                            y += linespace_h * LINE_SPACING + 16.0;
+                        },
+
                         _ => ()
                     }
 
@@ -418,6 +407,7 @@ impl Tundra {
                         glium::glutin::WindowEvent::KeyboardInput {
                             input: glium::glutin::KeyboardInput {
                                 virtual_keycode: Some(glium::glutin::VirtualKeyCode::Down),
+                                state: glium::glutin::ElementState::Pressed,
                                 ..
                             },
                             ..
@@ -425,6 +415,7 @@ impl Tundra {
                         glium::glutin::WindowEvent::KeyboardInput {
                             input: glium::glutin::KeyboardInput {
                                 virtual_keycode: Some(glium::glutin::VirtualKeyCode::Up),
+                                state: glium::glutin::ElementState::Pressed,
                                 ..
                             },
                             ..
