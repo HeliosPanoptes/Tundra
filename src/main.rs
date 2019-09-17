@@ -15,7 +15,6 @@ use std::io::{Write, Read};
 use std::collections::HashMap;
 use glium::Surface;
 use conrod_core::{color, widget, Colorable, Widget, Positionable, Sizeable};
-use std::ops::Deref;
 
 mod support;
 
@@ -37,7 +36,7 @@ fn main() {
 }
 
 struct WindowUi {
-    ui : conrod_core::Ui,
+    ui: conrod_core::Ui,
     events_loop: glium::glutin::EventsLoop,
     display: support::GliumDisplayWinitWrapper,
     font: conrod_core::text::font::Id,
@@ -46,11 +45,18 @@ struct WindowUi {
     font_bi: conrod_core::text::font::Id,
 }
 
+struct DisplayListItem {
+    x: f64,
+    y: f64,
+    text: String,
+    font: conrod_core::text::font::Id,
+}
+
 struct Tundra {
     window_height : u32,
     window_width : u32,
     scroll_y : f64,
-    display_list: Vec<(f64, f64, String)>
+    display_list: Vec<DisplayListItem>
 }
 
 enum Token {
@@ -235,8 +241,8 @@ impl Tundra {
 //        return text;
 
         //base position
-        let mut x = 13.0;
-        let mut y = 13.0;
+        let mut x: f64 = 13.0;
+        let mut y: f64 = 13.0;
 
         //convenience
         let ref ui = window_ui.ui;
@@ -249,12 +255,27 @@ impl Tundra {
         let mut italic = false;
         let mut current_font = f;
 
+        let mut terminal_space = true;
+
         for token in tokens.iter() {
+            let w = widget::Text::new(" ")
+                .font_id(current_font)
+                .font_size(16);
+            let linespace_h = w.get_h(ui).unwrap();
+            let whitespace_w = w.get_w(ui).unwrap();
+
             match token {
                 Token::Text(text) => {
-                    for word in text.split_whitespace() {
+                    let words = text.split_whitespace();
+                    let wordcount = words.clone().count();
+
+                    if text.starts_with(" ") && !terminal_space {
+                        x += whitespace_w;
+                    }
+
+                    for (i, word) in words.enumerate() {
                         //make a dummy version to let conrod do the hard work of the layout.
-                        let w = widget::Text::new(&text)
+                        let w = widget::Text::new(&word)
                             .font_id(current_font)
                             .font_size(16)
                             .line_spacing(1.2);
@@ -265,13 +286,25 @@ impl Tundra {
                             y += w_h;
                             x = 13.0;
                         }
-                        self.display_list.push((x, y, text.to_owned()));
+                        let display_list_item = DisplayListItem {
+                            x, y, text: word.to_owned(), font: current_font };
 
-                        //add a whitespace
-                        x += 5.0;
-                    };
+                        self.display_list.push(display_list_item);
+
+                        let mut whitespace = whitespace_w;
+                        if i == (wordcount - 1) {
+                            whitespace = 0.0;
+                        }
+                        x += w_w + whitespace;
+                    }
+                    // Add a whitespace if the last character is a space
+                    terminal_space = text.ends_with(" ");
+                    if terminal_space && wordcount > 0 {
+                        x += whitespace_w;
+                    }
 
                 },
+
                 Token::Tag(tag) => {
                     let tag = tag.as_str();
                     match tag {
@@ -279,6 +312,11 @@ impl Tundra {
                         "/i" => italic = false,
                         "b" => bold = true,
                         "/b" => bold = false,
+                        "/p" => {
+                            terminal_space = true;
+                            x = 13.0;
+                            y += linespace_h * 1.2 + 16.0;
+                        }
                         _ => ()
                     }
 
@@ -289,28 +327,10 @@ impl Tundra {
                         (false, true)  => current_font = f_i,
                         (true, true)   => current_font = f_bi,
                     }
-
                 }
             };
         };
-//            if character == "\n" {
-//                x = 13.0;
-//                y += 30.0;
-//                continue;
-//            };
-//
-//            //we can move the data to our own struct
-//            // This avoids lifetime hell
-//            self.display_list.push((x, y, character.to_owned()));
-//
-//            //update for the next character
-//            x += 13.0;
-//            if x > (ui.win_w - 13.0) {
-//                y += 18.0;
-//                x = 13.0;
-//            }
     }
-
 
     fn set_up_window(&self) -> WindowUi {
         let mut ui = conrod_core::UiBuilder::new([INIT_WIDTH as f64, INIT_HEIGHT as f64]).build();
@@ -441,17 +461,19 @@ impl Tundra {
 
         //manual loop because I can't figure out how to borrow the display_list text
         for i in 0..self.display_list.len() {
-            let x = self.display_list[i].0;
-            let y = self.display_list[i].1;
+            let x: f64 = self.display_list[i].x;
+            let y: f64 = self.display_list[i].y;
 
             if y > self.scroll_y && y < self.scroll_y + self.window_height as f64 {
-                let text = self.display_list[i].2.clone(); //have to clone because it's part of a tuple
-                let w = widget::Text::new(&text);
+                let text = &self.display_list[i].text.clone();
+                let w = widget::Text::new(text);
                 let w_wh = w.get_wh(ui).unwrap();
                 let rel_pos = self.rel(ui, w_wh, [x, y - self.scroll_y]);
                 w.xy(rel_pos)
                     .color(color::BLACK)
-                    .set(ids.text[i], ui);
+                    .font_id(self.display_list[i].font)
+                    .font_size(16)
+                    .set(ids.text[i], ui); //thumbtack
             }
         }
 //        for (x, y, text) in &self.display_list.as_mut() {
@@ -493,7 +515,7 @@ impl Tundra {
         self.scroll_y += SCROLL_STEP;
 
         // Don't scroll past the bottom of the page
-        let (_, last_y, _) = self.display_list.last().unwrap().clone();
+        let last_y = self.display_list.last().unwrap().y;
 
         if self.scroll_y > last_y - self.window_height as f64 {
             self.scroll_y = last_y - self.window_height as f64;
