@@ -46,11 +46,23 @@ struct WindowUi {
     font_bi: conrod_core::text::font::Id,
 }
 
-struct DisplayListItem {
+enum DisplayListItem {
+    Text(DisplayListText),
+    Line(DisplayListLine),
+}
+
+struct DisplayListText {
     x: f64,
     y: f64,
     text: String,
     font: conrod_core::text::font::Id,
+    color: conrod_core::color::Color,
+}
+
+struct DisplayListLine {
+    start: conrod_core::position::Point,
+    end: conrod_core::position::Point,
+    color: conrod_core::color::Color,
 }
 
 struct Tundra {
@@ -227,12 +239,15 @@ impl Tundra {
         let f_i = window_ui.font_i;
         let f_bi = window_ui.font_bi;
 
+        let mut current_font = f;
+        let mut current_color = color::BLACK;
         let mut bold = false;
         let mut italic = false;
-        let mut current_font = f;
-
         let mut terminal_space = true;
         let mut in_body = false;
+        let mut in_comment = false;
+        let mut underline = false;
+
 
 
         for token in self.tokens.iter() {
@@ -259,7 +274,6 @@ impl Tundra {
                         //make a dummy version to let conrod do the hard work of the layout.
                         // *** MUST SET FONT BEFORE GETTING DIMENSIONS ***
                         let w = widget::Text::new(&word)
-                            .color(color::BLACK)
                             .font_id(current_font)
                             .font_size(FONT_SIZE)
                             .line_spacing(LINE_SPACING);
@@ -269,10 +283,18 @@ impl Tundra {
                             y += w_wh[1] * LINE_SPACING;
                             x = 13.0;
                         };
-                        let display_list_item = DisplayListItem {
-                            x, y, text: word.to_owned(), font: current_font };
 
-                        self.display_list.push(display_list_item);
+                        let display_list_text = DisplayListText {
+                            x, y, text: word.to_owned(), font: current_font, color: current_color };
+                        self.display_list.push(DisplayListItem::Text(display_list_text));
+
+                        if underline {
+                            let start_point = [x, y - w_wh[1]];
+                            let end_point = [x + w_wh[0], y - w_wh[1]];
+                            let display_list_line = DisplayListLine {
+                                start: start_point, end: end_point, color: current_color };
+                            self.display_list.push(DisplayListItem::Line(display_list_line));
+                        }
 
                         let mut whitespace = whitespace_w;
                         if i == (wordcount - 1) {
@@ -288,8 +310,33 @@ impl Tundra {
                 },
 
                 Token::Tag(tag) => {
-                    let tag = tag.as_str();
-                    match tag {
+                    //handle comments
+                    if tag.starts_with("!--") {
+                        in_comment = true;
+                    }
+                    // Will skip multi-tag comments
+                    if tag.ends_with("--") || in_comment {
+                        in_comment = false;
+                        continue;
+                    }
+                    //split a tag into tag name and attributes dictionary
+                    let mut tag_parts = tag.split_whitespace();
+                    let tag_name = tag_parts.nth(0).unwrap();
+                    //handle the start of the document
+                    if tag_name.contains("?xml") || tag_name.contains("DOCTYPE") {
+                        continue; //handle by not handling
+                    }
+
+                    let mut attributes: HashMap<&str, &str> = HashMap::new();
+                    for attribute in tag_parts {
+                        let separated: Vec<_>  = attribute.splitn(2,"=").collect();
+                        if separated.len() < 2 {
+                            break; //ignore parsing errors, especially in the case of self-closing tags
+                        }
+                        attributes.insert(separated[0], separated[1]);
+
+                    }
+                    match tag_name {
                         "body" => in_body = true,
                         "/body" => in_body = false,
                         "i" => italic = true,
@@ -311,6 +358,14 @@ impl Tundra {
                             terminal_space = true;
                             x = 13.0;
                             y += linespace_h * LINE_SPACING + 16.0;
+                        },
+                        "a" => {
+                            underline = true;
+                            current_color = color::BLUE;
+                        },
+                        "/a" => {
+                            underline = true;
+                            current_color = color::BLACK;
                         },
 
                         _ => ()
@@ -463,30 +518,55 @@ impl Tundra {
 //        ids.rectangles.resize(self.display_list.len(), &mut ui.widget_id_generator());
 
         //manual loop because I can't figure out how to borrow the display_list text
+//        for (i, item) in self.display_list.iter().enumerate() {
         for i in 0..self.display_list.len() {
-            let x: f64 = self.display_list[i].x;
-            let y: f64 = self.display_list[i].y;
+            let item = &self.display_list[i];
+            match item {
+                DisplayListItem::Text(text_item) => {
+                    let x = text_item.x;
+                    let y = text_item.y;
+                    let color = text_item.color;
 
-            if y > self.scroll_y && y < self.scroll_y + self.window_height as f64 {
-                let text = &self.display_list[i].text.clone();
+                    if y > self.scroll_y && y < self.scroll_y + self.window_height as f64 {
+                        let text = &text_item.text.clone();
 
+                        // *** MUST SET FONT BEFORE GETTING DIMENSIONS ***
+                        let w = widget::Text::new(text)
+                            .color(color)
+                            .font_id(text_item.font)
+                            .font_size(FONT_SIZE)
+                            .line_spacing(LINE_SPACING);
+                        let w_wh = w.get_wh(ui).unwrap();
+                        let rel_pos = self.rel(ui, w_wh, [x, y - self.scroll_y]);
+                        w.xy(rel_pos)
+                            .set(ids.text[i], ui);
 
-                // *** MUST SET FONT BEFORE GETTING DIMENSIONS ***
-                let w = widget::Text::new(text)
-                    .color(color::BLACK)
-                    .font_id(self.display_list[i].font)
-                    .font_size(FONT_SIZE)
-                    .line_spacing(LINE_SPACING);
-                let w_wh = w.get_wh(ui).unwrap();
-                let rel_pos = self.rel(ui, w_wh, [x, y - self.scroll_y]);
-                w.xy(rel_pos)
-                    .set(ids.text[i], ui);
+                        //draw a rectangle around the word widget as well (debug help)
+                        //let r = widget::BorderedRectangle::new(w_wh)
+                        //    .xy(rel_pos)
+                        //    .color(color::TRANSPARENT)
+                        //    .set(ids.rectangles[i], ui);
+                    }
+                },
+                DisplayListItem::Line(line_item) => {
+                    let start = line_item.start;
+                    let end = line_item.end;
+                    let color = line_item.color;
+                    let y = start[1];
+                    if y > self.scroll_y && y < self.scroll_y + self.window_height as f64 {
+                        //convert start and end from absolute to relative
+                        // widget_wh of 0 by 0 to just get the point without adjustments
+                        let start_rel = self.rel(ui, [0.0, 0.0], start);
+                        let end_rel = self.rel(ui, [0.0, 0.0], end);
 
-                //draw a rectangle around the word widget as well (debug help)
-                //let r = widget::BorderedRectangle::new(w_wh)
-                //    .xy(rel_pos)
-                //    .color(color::TRANSPARENT)
-                //    .set(ids.rectangles[i], ui);
+                        // *** MUST SET FONT BEFORE GETTING DIMENSIONS ***
+                        let w = widget::Line::new(start_rel, end_rel)
+                            .color(color)
+                            .solid()
+                            .thickness(1.5)
+                            .set(ids.text[i], ui);
+                    }
+                }
             }
         }
     }
@@ -519,7 +599,12 @@ impl Tundra {
         self.scroll_y += SCROLL_STEP;
 
         // Don't scroll past the bottom of the page
-        let last_y = self.display_list.last().unwrap().y;
+        let last_item = self.display_list.last().unwrap();
+        let mut last_y;
+        match last_item {
+            DisplayListItem::Text(item) => last_y = item.y,
+            DisplayListItem::Line(item) => last_y = item.end[1],
+        };
 
         if self.scroll_y > last_y - self.window_height as f64 {
             self.scroll_y = last_y - self.window_height as f64;
