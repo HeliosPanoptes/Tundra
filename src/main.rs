@@ -364,7 +364,7 @@ impl Tundra {
                             current_color = color::BLUE;
                         },
                         "/a" => {
-                            underline = true;
+                            underline = false;
                             current_color = color::BLACK;
                         },
 
