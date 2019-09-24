@@ -19,7 +19,6 @@ use regex::Regex;
 use glium::Surface;
 use conrod_core::{color, widget, Colorable, Widget, Positionable, Sizeable};
 //Trees, who knew right?
-//use petgraph::prelude;
 use petgraph::Graph;
 // linked trees are pretty hard due to rust's guarantees
 
@@ -99,6 +98,18 @@ enum LayoutNode {
 
 struct LayoutState{
     layout_tree: petgraph::Graph<LayoutNode, i32>,
+    layout_root: Option<petgraph::graph::NodeIndex>,
+    //thumbtack
+    x: f64,
+    y: f64,
+    current_color: conrod_core::color::Color,
+    bold: bool,
+    italic: bool,
+    terminal_space: bool,
+    in_body: bool,
+    in_comment: bool,
+    underline: bool,
+
 }
 
 impl LayoutState {
@@ -122,6 +133,10 @@ impl LayoutState {
             },
             None => (return None)
         }
+    }
+
+    fn children_of(&self, parent_index: petgraph::graph::NodeIndex) -> petgraph::graph::Neighbors<i32> {
+        self.layout_tree.neighbors_directed(parent_index, petgraph::Outgoing)
     }
 
     fn get_layout_node(&self, node_index: petgraph::graph::NodeIndex) -> &LayoutNode {
@@ -152,7 +167,19 @@ impl Tundra {
             scroll_y: 0.0,
             tokens: Vec::new(),
             display_list: Vec::new(),
-            layout_state: LayoutState {layout_tree: Graph::<LayoutNode, i32>::new()}
+            layout_state: LayoutState {
+                layout_tree: Graph::<LayoutNode, i32>::new(),
+                layout_root: None,
+                x: 13.0,
+                y: 13.0,
+                current_color: conrod_core::color::BLACK,
+                bold: false,
+                italic: false,
+                terminal_space: true,
+                in_body: false,
+                in_comment: false,
+                underline: false
+            }
         };
     }
     /// A convenience method that combines all of the steps for the browser to
@@ -172,7 +199,7 @@ impl Tundra {
         //let body = "<p>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa a</p>".to_string();
         self.lex(body);
         self.parse_tokens();
-        self.layout(&mut window_ui);
+        self.layout(&mut window_ui, self.layout_state.layout_root.unwrap());
 
         self.render(&mut window_ui);
     }
@@ -290,7 +317,7 @@ impl Tundra {
     }
 
     /// Put the list of tokens into a layout tree, return the root node
-    fn parse_tokens(&mut self) -> petgraph::graph::NodeIndex {
+    fn parse_tokens(&mut self) {
         let mut current_node: Option<petgraph::graph::NodeIndex> = None;
         let attribute_re: Regex = Regex::new(r#"((\w+)=((\w+)|(".*?")))+"#).unwrap();
 
@@ -310,8 +337,11 @@ impl Tundra {
 
                         //tag name
                         let tag_parts: Vec<&str> = tag.splitn(2, " ").collect();
-                        let tag_name = tag_parts[0];
-                        let mut new_element = ElementNode::new(tag_name.to_string());
+                        let mut tag_name = tag_parts[0].to_string();
+                        if tag_parts.last().unwrap().ends_with("--") {
+                            tag_name.push_str("--"); //handle end comments
+                        }
+                        let mut new_element = ElementNode::new(tag_name);
                         if tag_parts.len() > 1 {
                             let attributes = tag_parts[1];
                             for capture in attribute_re.captures_iter(&attributes) {
@@ -324,7 +354,7 @@ impl Tundra {
                             None => { self.layout_state.add_node(LayoutNode::Element(new_element)) },
                         };
                         //enter the current node, unless it's self-closing
-                        if !(self_closing || ["br", "link", "meta"].contains(&tag_name)) {
+                        if !(self_closing || ["br", "link", "meta"].contains(&tag_name.as_str())) {
                             current_node = Some(new_node);
                         }
                     } else { //close tag
@@ -367,17 +397,25 @@ impl Tundra {
             root = self.layout_state.parent_of(current_node.unwrap());
         }
         //once we can't go up any further:
-        return current_node.unwrap();
+        self.layout_state.layout_root = current_node;
     }
 
     /// Takes text and returns a display-list of the format (x, y, text)
-    fn layout(&mut self, window_ui: &mut WindowUi) {
-        // clear the display list, especially when re-laying out
-        self.display_list.clear();
+    fn layout(&mut self, window_ui: &mut WindowUi, node: petgraph::graph::NodeIndex) {
+        //thumbtack
 
-        //base position
-        let mut x: f64 = 13.0;
-        let mut y: f64 = 13.0;
+        match self.layout_state.get_layout_node(node) {
+            LayoutNode::Element(element) => {
+                self.layout_open(node);
+                for child in self.layout_state.children_of(node) {
+                    self.layout(window_ui, child);
+                }
+                self.layout_close(node);
+            },
+            LayoutNode::Text(text) => {
+                self.layout_text(node);
+            }
+        };
 
         //convenience
         let ref ui = window_ui.ui;
@@ -385,15 +423,16 @@ impl Tundra {
         let f_b = window_ui.font_b;
         let f_i = window_ui.font_i;
         let f_bi = window_ui.font_bi;
+        let state = &self.layout_state;
 
-        let mut current_font = f;
-        let mut current_color = color::BLACK;
-        let mut bold = false;
-        let mut italic = false;
-        let mut terminal_space = true;
-        let mut in_body = false;
-        let mut in_comment = false;
-        let mut underline = false;
+        //set the font style
+        let current_font;
+        match (state.bold, state.italic) {
+            (false, false) => current_font = f,
+            (true, false) => current_font = f_b,
+            (false, true) => current_font = f_i,
+            (true, true) => current_font = f_bi,
+        }
 
         for token in self.tokens.iter() {
 
@@ -432,11 +471,13 @@ impl Tundra {
                         };
 
                         let display_list_text = DisplayListText {
-                            x, y,
+                            x,
+                            y,
                             text: word.to_owned(),
                             font: current_font,
                             color: current_color,
-                            underline };
+                            underline
+                        };
                         self.display_list.push(DisplayListItem::Text(display_list_text));
 
                         let mut whitespace = whitespace_w;
@@ -451,79 +492,82 @@ impl Tundra {
                         x += whitespace_w;
                     }
                 },
+            }
+        }
+    }
 
-                Token::Tag(tag) => {
-                    //handle comments
-                    if tag.starts_with("!--") {
-                        in_comment = true;
-                    }
-                    // Will skip multi-tag comments
-                    if tag.ends_with("--") || in_comment {
-                        in_comment = false;
-                        continue;
-                    }
-                    //split a tag into tag name and attributes dictionary
-                    let mut tag_parts = tag.split_whitespace();
-                    let tag_name = tag_parts.nth(0).unwrap();
-                    //handle the start of the document
-                    if tag_name.contains("?xml") || tag_name.contains("DOCTYPE") {
-                        continue; //handle by not handling
-                    }
-
-                    let mut attributes: HashMap<&str, &str> = HashMap::new();
-                    for attribute in tag_parts {
-                        let separated: Vec<_>  = attribute.splitn(2,"=").collect();
-                        if separated.len() < 2 {
-                            break; //ignore parsing errors, especially in the case of self-closing tags
-                        }
-                        attributes.insert(separated[0], separated[1]);
-
-                    }
-                    match tag_name {
-                        "body" => in_body = true,
-                        "/body" => in_body = false,
-                        "i" => italic = true,
-                        "/i" => italic = false,
-                        "b" => bold = true,
-                        "/b" => bold = false,
-                        "/p" | "br" => {
-                            terminal_space = true;
-                            x = 13.0;
-                            y += linespace_h * LINE_SPACING + 16.0;
-                        },
-                        "h1" => {
-                            bold = true;
-                            x = 13.0;
-                            y += linespace_h * LINE_SPACING + 16.0;
-                        },
-                        "/h1" => {
-                            bold = false;
-                            terminal_space = true;
-                            x = 13.0;
-                            y += linespace_h * LINE_SPACING + 16.0;
-                        },
-                        "a" => {
-                            underline = true;
-                            current_color = color::BLUE;
-                        },
-                        "/a" => {
-                            underline = false;
-                            current_color = color::BLACK;
-                        },
-
-                        _ => ()
-                    }
-
-                    //set the font style
-                    match (bold, italic) {
-                        (false, false) => current_font = f,
-                        (true, false)  => current_font = f_b,
-                        (false, true)  => current_font = f_i,
-                        (true, true)   => current_font = f_bi,
-                    }
+    fn layout_open(&mut self, node: petgraph::graph::NodeIndex) {
+        match self.layout_state.get_layout_node(node) {
+            LayoutNode::Element(element) => {
+                let tag = &element.tag;
+                let mut state = &mut self.layout_state;
+                //handle comments
+                if tag.starts_with("!--") {
+                    state.in_comment = true;
                 }
-            };
-        };
+                // Will skip multi-tag comments
+                if in_comment {
+                    return;
+                }
+
+                match tag.as_str() {
+                    "body" => state.in_body = true,
+                    "i" => state.italic = true,
+                    "b" => state.bold = true,
+                    "h1" => {
+                        state.bold = true;
+                        state.x = 13.0;
+                        state.y += linespace_h * LINE_SPACING + 16.0;
+                    },
+                    "a" => {
+                        state.underline = true;
+                        state.current_color = color::BLUE;
+                    },
+                    _ => ()
+                }
+            },
+            _ => (panic!("Called layout_open() on something that wasn't an element node type"))
+        }
+    }
+
+    fn layout_close(&mut self, node: petgraph::graph::NodeIndex) {
+        match self.layout_state.get_layout_node(node) {
+            LayoutNode::Text(element) => {
+                let tag = &element.tag;
+                let mut state = &mut self.layout_state;
+                if tag.ends_with("--") {
+                    state.in_comment = false;
+                    return;
+                }
+                // Will skip multi-tag comments
+                if state.in_comment {
+                    return;
+                }
+
+                match tag_name {
+                    "/body" => state.in_body = false,
+                    "/i" => state.italic = false,
+                    "/b" => state.bold = false,
+                    "/p" | "br" => {
+                        state.terminal_space = true;
+                        state.x = 13.0;
+                        state.y += linespace_h * LINE_SPACING + 16.0;
+                    },
+                    "/h1" => {
+                        state.bold = false;
+                        state.terminal_space = true;
+                        state.x = 13.0;
+                        state.y += linespace_h * LINE_SPACING + 16.0;
+                    },
+                    "/a" => {
+                        state.underline = false;
+                        state.current_color = color::BLACK;
+                    },
+                    _ => ()
+                }
+            },
+            _ => ()
+        }
     }
 
     fn set_up_window(&self) -> WindowUi {
@@ -640,7 +684,9 @@ impl Tundra {
             if window_ui.ui.win_w != self.window_width || window_ui.ui.win_h != self.window_height {
                 self.window_width = window_ui.ui.win_w;
                 self.window_height = window_ui.ui.win_h;
-                self.layout(&mut window_ui);
+                // clear the display list, especially when re-laying out
+                self.display_list.clear();
+                self.layout(&mut window_ui, self.layout_state.layout_root.unwrap());
 //                window_ui.ui.needs_redraw();
             }
         } //...end draw loop
