@@ -124,7 +124,7 @@ impl LayoutState {
         return child_id;
     }
 
-    fn parent_of(&self, child_index: petgraph::graph::NodeIndex) -> Option<petgraph::graph::NodeIndex> {
+    fn parent_of(&mut self, child_index: petgraph::graph::NodeIndex) -> Option<petgraph::graph::NodeIndex> {
         let parent_edge = self.layout_tree.first_edge(child_index, petgraph::Incoming);
         match parent_edge {
             Some(parent_edge) => {
@@ -135,11 +135,11 @@ impl LayoutState {
         }
     }
 
-    fn children_of(&self, parent_index: petgraph::graph::NodeIndex) -> petgraph::graph::Neighbors<i32> {
+    fn children_of(&mut self, parent_index: petgraph::graph::NodeIndex) -> petgraph::graph::Neighbors<i32> {
         self.layout_tree.neighbors_directed(parent_index, petgraph::Outgoing)
     }
 
-    fn get_layout_node(&self, node_index: petgraph::graph::NodeIndex) -> &LayoutNode {
+    fn get_layout_node(&mut self, node_index: petgraph::graph::NodeIndex) -> &LayoutNode {
         &self.layout_tree[node_index]
     }
 }
@@ -341,7 +341,7 @@ impl Tundra {
                         if tag_parts.last().unwrap().ends_with("--") {
                             tag_name.push_str("--"); //handle end comments
                         }
-                        let mut new_element = ElementNode::new(tag_name);
+                        let mut new_element = ElementNode::new(tag_name.clone());
                         if tag_parts.len() > 1 {
                             let attributes = tag_parts[1];
                             for capture in attribute_re.captures_iter(&attributes) {
@@ -405,108 +405,40 @@ impl Tundra {
         //thumbtack
 
         match self.layout_state.get_layout_node(node) {
-            LayoutNode::Element(element) => {
-                self.layout_open(node);
-                for child in self.layout_state.children_of(node) {
+            LayoutNode::Element(_element) => {
+                self.layout_open(window_ui, node);
+                //must detach from the tree in order to walk and mutate state at the same time
+                let mut child_walker = self.layout_state.children_of(node).detach();
+                while let Some(child) = child_walker.next_node(&self.layout_state.layout_tree) {
                     self.layout(window_ui, child);
                 }
-                self.layout_close(node);
+                self.layout_close(window_ui, node);
             },
-            LayoutNode::Text(text) => {
-                self.layout_text(node);
+            LayoutNode::Text(_text) => {
+                self.layout_text(window_ui, node);
             }
         };
-
-        //convenience
-        let ref ui = window_ui.ui;
-        let f = window_ui.font;
-        let f_b = window_ui.font_b;
-        let f_i = window_ui.font_i;
-        let f_bi = window_ui.font_bi;
-        let state = &self.layout_state;
-
-        //set the font style
-        let current_font;
-        match (state.bold, state.italic) {
-            (false, false) => current_font = f,
-            (true, false) => current_font = f_b,
-            (false, true) => current_font = f_i,
-            (true, true) => current_font = f_bi,
-        }
-
-        for token in self.tokens.iter() {
-
-            //Calculate whitespace of current font
-            let w = widget::Text::new(" ")
-                .font_id(current_font)
-                .font_size(FONT_SIZE);
-            let linespace_h = w.get_h(ui).unwrap();
-            let whitespace_w = w.get_w(ui).unwrap();
-
-            match token {
-                Token::Text(text) => {
-                    //only print the body
-                    if !in_body {
-                        continue;
-                    }
-                    let words = text.split_whitespace();
-                    let wordcount = words.clone().count();
-
-                    if text.starts_with(" ") && !terminal_space {
-                        x += whitespace_w;
-                    }
-
-                    for (i, word) in words.enumerate() {
-                        //make a dummy version to let conrod do the hard work of the layout.
-                        // *** MUST SET FONT BEFORE GETTING DIMENSIONS ***
-                        let w = widget::Text::new(&word)
-                            .font_id(current_font)
-                            .font_size(FONT_SIZE)
-                            .line_spacing(LINE_SPACING);
-                        let w_wh = w.get_wh(ui).unwrap();
-
-                        if (x + w_wh[0]) > (self.window_width - 13.0) {
-                            y += w_wh[1] * LINE_SPACING;
-                            x = 13.0;
-                        };
-
-                        let display_list_text = DisplayListText {
-                            x,
-                            y,
-                            text: word.to_owned(),
-                            font: current_font,
-                            color: current_color,
-                            underline
-                        };
-                        self.display_list.push(DisplayListItem::Text(display_list_text));
-
-                        let mut whitespace = whitespace_w;
-                        if i == (wordcount - 1) {
-                            whitespace = 0.0;
-                        };
-                        x += w_wh[0] + whitespace;
-                    }
-                    // Add a whitespace if the last character is a space
-                    terminal_space = text.ends_with(" ");
-                    if terminal_space && wordcount > 0 {
-                        x += whitespace_w;
-                    }
-                },
-            }
-        }
     }
 
-    fn layout_open(&mut self, node: petgraph::graph::NodeIndex) {
+    fn layout_open(&mut self, window_ui: &mut WindowUi, node: petgraph::graph::NodeIndex) {
         match self.layout_state.get_layout_node(node) {
             LayoutNode::Element(element) => {
-                let tag = &element.tag;
+                //Calculate whitespace of current font
+                let current_font = window_ui.font;
+                let w = widget::Text::new(" ")
+                    .font_id(current_font)
+                    .font_size(FONT_SIZE);
+                let linespace_h = w.get_h(&window_ui.ui).unwrap();
+
+                let tag = element.tag.clone();
                 let mut state = &mut self.layout_state;
+
                 //handle comments
                 if tag.starts_with("!--") {
                     state.in_comment = true;
                 }
                 // Will skip multi-tag comments
-                if in_comment {
+                if state.in_comment {
                     return;
                 }
 
@@ -530,11 +462,19 @@ impl Tundra {
         }
     }
 
-    fn layout_close(&mut self, node: petgraph::graph::NodeIndex) {
+    fn layout_close(&mut self, window_ui: &mut WindowUi, node: petgraph::graph::NodeIndex) {
         match self.layout_state.get_layout_node(node) {
-            LayoutNode::Text(element) => {
-                let tag = &element.tag;
+            LayoutNode::Element(element) => {
+                //Calculate whitespace of current font
+                let current_font = window_ui.font;
+                let w = widget::Text::new(" ")
+                    .font_id(current_font)
+                    .font_size(FONT_SIZE);
+                let linespace_h = w.get_h(&window_ui.ui).unwrap();
+
+                let tag = element.tag.clone();
                 let mut state = &mut self.layout_state;
+
                 if tag.ends_with("--") {
                     state.in_comment = false;
                     return;
@@ -544,7 +484,7 @@ impl Tundra {
                     return;
                 }
 
-                match tag_name {
+                match tag.as_str() {
                     "/body" => state.in_body = false,
                     "/i" => state.italic = false,
                     "/b" => state.bold = false,
@@ -566,7 +506,83 @@ impl Tundra {
                     _ => ()
                 }
             },
-            _ => ()
+            _ => (panic!("Called layout_close() on something that wasn't an element node type"))
+        }
+    }
+
+    fn layout_text(&mut self, window_ui: &mut WindowUi, node: petgraph::graph::NodeIndex) {
+        let mut state = &mut self.layout_state;
+        let layout_node = state.get_layout_node(node);
+
+
+        match layout_node {
+            LayoutNode::Text(text) => {
+                let text = text.text.clone();
+                let ref ui = window_ui.ui;
+
+                //set the font style
+                let current_font;
+                match (state.bold, state.italic) {
+                    (false, false) => current_font = window_ui.font,
+                    (true, false) => current_font = window_ui.font_b,
+                    (false, true) => current_font = window_ui.font_i,
+                    (true, true) => current_font = window_ui.font_bi,
+                }
+
+                //Calculate whitespace of current font
+                let w = widget::Text::new(" ")
+                    .font_id(current_font)
+                    .font_size(FONT_SIZE);
+                let whitespace_w = w.get_w(ui).unwrap();
+
+                //only print the body
+                if !state.in_body {
+                    return;
+                }
+                let words = text.split_whitespace();
+                let wordcount = words.clone().count();
+
+                if text.starts_with(" ") && !state.terminal_space {
+                    state.x += whitespace_w;
+                }
+
+                for (i, word) in words.enumerate() {
+                    //make a dummy version to let conrod do the hard work of the layout.
+                    // *** MUST SET FONT BEFORE GETTING DIMENSIONS ***
+                    let w = widget::Text::new(&word)
+                        .font_id(current_font)
+                        .font_size(FONT_SIZE)
+                        .line_spacing(LINE_SPACING);
+                    let w_wh = w.get_wh(ui).unwrap();
+
+                    if (state.x + w_wh[0]) > (self.window_width - 13.0) {
+                        state.y += w_wh[1] * LINE_SPACING;
+                        state.x = 13.0;
+                    };
+
+                    let display_list_text = DisplayListText {
+                        x: state.x,
+                        y: state.y,
+                        text: word.to_owned(),
+                        font: current_font,
+                        color: state.current_color,
+                        underline: state.underline
+                    };
+                    self.display_list.push(DisplayListItem::Text(display_list_text));
+
+                    let mut whitespace = whitespace_w;
+                    if i == (wordcount - 1) {
+                        whitespace = 0.0;
+                    };
+                    state.x += w_wh[0] + whitespace;
+                }
+                // Add a whitespace if the last character is a space
+                state.terminal_space = text.ends_with(" ");
+                if state.terminal_space && wordcount > 0 {
+                    state.x += whitespace_w;
+                }
+            },
+            _ => (panic!("Called layout_text() on something that wasn't a text node type"))
         }
     }
 
