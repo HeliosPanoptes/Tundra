@@ -6,6 +6,8 @@ extern crate conrod_winit;
 extern crate find_folder;
 extern crate glium;
 extern crate image;
+extern crate regex;
+extern crate petgraph;
 
 
 use std::env;
@@ -13,9 +15,15 @@ use std::process::exit;
 use std::net::TcpStream;
 use std::io::{Write, Read};
 use std::collections::HashMap;
+use regex::Regex;
 use glium::Surface;
 use conrod_core::{color, widget, Colorable, Widget, Positionable, Sizeable};
+//Trees, who knew right?
+use petgraph::prelude;
+use petgraph::Graph;
+// linked trees are pretty hard due to rust's guarantees
 
+//conrod support functions
 mod support;
 
 const SCROLL_STEP: f64 = 20.0;
@@ -48,7 +56,6 @@ struct WindowUi {
 
 enum DisplayListItem {
     Text(DisplayListText),
-    Line(DisplayListLine),
 }
 
 struct DisplayListText {
@@ -57,12 +64,46 @@ struct DisplayListText {
     text: String,
     font: conrod_core::text::font::Id,
     color: conrod_core::color::Color,
+    underline: bool,
 }
 
-struct DisplayListLine {
-    start: conrod_core::position::Point,
-    end: conrod_core::position::Point,
-    color: conrod_core::color::Color,
+struct ElementNode {
+    tag: String,
+    attributes: HashMap<String, String>,
+}
+
+impl ElementNode {
+    fn new(tag: String) -> ElementNode {
+        return ElementNode { tag, attributes: HashMap::new() };
+    }
+
+    fn add_attr(&mut self, k: String, v: String) {
+        self.attributes.insert(k, v);
+    }
+}
+
+struct TextNode {
+    text: String,
+}
+
+impl TextNode {
+    fn new(text: String) -> TextNode {
+        return TextNode{ text }
+    }
+}
+
+enum LayoutNode {
+    Element(ElementNode),
+    Text(TextNode),
+}
+
+struct LayoutState{
+    layout_tree: petgraph::Graph<LayoutNode, i32>,
+}
+
+enum Token {
+    Text(String),
+    Tag(String),
 }
 
 struct Tundra {
@@ -70,12 +111,8 @@ struct Tundra {
     window_width : f64,
     scroll_y : f64,
     tokens: Vec<Token>,
-    display_list: Vec<DisplayListItem>
-}
-
-enum Token {
-    Text(String),
-    Tag(String),
+    display_list: Vec<DisplayListItem>,
+    layout_state: LayoutState
 }
 
 impl Tundra {
@@ -87,6 +124,7 @@ impl Tundra {
             scroll_y: 0.0,
             tokens: Vec::new(),
             display_list: Vec::new(),
+            layout_state: LayoutState {layout_tree: Graph::<LayoutNode, i32>::new()}
         };
     }
     /// A convenience method that combines all of the steps for the browser to
@@ -248,14 +286,67 @@ impl Tundra {
         let mut in_comment = false;
         let mut underline = false;
 
+        let mut current_node: Option<petgraph::graph::NodeIndex> = None;
+        let mut tree = &mut self.layout_state.layout_tree;
 
+        let attribute_re: Regex = Regex::new(r#"((\w+)=((\w+)|(".*?")))+"#).unwrap();
 
         for token in self.tokens.iter() {
+
+            match token{
+                Token::Text(text) => {
+                    let new_node = LayoutNode::Text(TextNode::new(text.to_owned()));
+                    let new_node = tree.add_node(new_node); //get the node index instead
+                    match current_node {
+                        Some(node) => { tree.add_edge(node, new_node, 1); },
+                        None => { panic!("Tried to add a text node to an empty layout graph"); },
+                    }
+                },
+                Token::Tag(tag) => {
+                    if !tag.starts_with("/") { //open tag
+                        let self_closing;
+                        if tag.ends_with("/") {self_closing = true;}
+                        else { self_closing = false;}
+
+                        //tag name
+                        let tag_parts: Vec<&str> = tag.splitn(2," ").collect();
+                        let tag_name = tag_parts[0];
+                        let mut new_element = ElementNode::new(tag_name.to_string());
+                        if tag_parts.len() > 1 {
+                            let attributes = tag_parts[1];
+                            for capture in attribute_re.captures_iter(&attributes) {
+                                //use the capture groups to split the keys and values
+                                new_element.add_attr(capture[2].to_string().to_lowercase(), capture[3].to_string());
+                            }
+                        }
+                        let new_node = tree.add_node(LayoutNode::Element(new_element));
+                        match current_node {
+                            Some(node) => { tree.add_edge(node, new_node, 1); },
+                            None => (),
+                        }
+                        //enter the current node, unless it's self-closing
+                        if !( self_closing || ["br", "link", "meta"].contains(&tag_name)) {
+                            current_node = Some(new_node);
+                        }
+                    } else { //close tag
+                        //go up to the parent
+                        let parent_edge = tree.first_edge(current_node.unwrap(), petgraph::Direction::Incoming).unwrap();
+                        let (parent, _) = tree.edge_endpoints(parent_edge).unwrap();
+                        let current_node = parent;
+                    }
+                }
+            }
+
+
+
+            //Calculate whitespace of current font
             let w = widget::Text::new(" ")
                 .font_id(current_font)
                 .font_size(FONT_SIZE);
             let linespace_h = w.get_h(ui).unwrap();
             let whitespace_w = w.get_w(ui).unwrap();
+
+
 
             match token {
                 Token::Text(text) => {
@@ -285,16 +376,12 @@ impl Tundra {
                         };
 
                         let display_list_text = DisplayListText {
-                            x, y, text: word.to_owned(), font: current_font, color: current_color };
+                            x, y,
+                            text: word.to_owned(),
+                            font: current_font,
+                            color: current_color,
+                            underline };
                         self.display_list.push(DisplayListItem::Text(display_list_text));
-
-                        if underline {
-                            let start_point = [x, y - w_wh[1]];
-                            let end_point = [x + w_wh[0], y - w_wh[1]];
-                            let display_list_line = DisplayListLine {
-                                start: start_point, end: end_point, color: current_color };
-                            self.display_list.push(DisplayListItem::Line(display_list_line));
-                        }
 
                         let mut whitespace = whitespace_w;
                         if i == (wordcount - 1) {
@@ -343,7 +430,7 @@ impl Tundra {
                         "/i" => italic = false,
                         "b" => bold = true,
                         "/b" => bold = false,
-                        "/p" => {
+                        "/p" | "br" => {
                             terminal_space = true;
                             x = 13.0;
                             y += linespace_h * LINE_SPACING + 16.0;
@@ -515,6 +602,7 @@ impl Tundra {
         //set the amount of text
         //We could be more memory efficient by only taking up space we need, but eh
         ids.text.resize(self.display_list.len(), &mut ui.widget_id_generator());
+        ids.underlines.resize(self.display_list.len(), &mut ui.widget_id_generator());
 //        ids.rectangles.resize(self.display_list.len(), &mut ui.widget_id_generator());
 
         //manual loop because I can't figure out how to borrow the display_list text
@@ -526,6 +614,7 @@ impl Tundra {
                     let x = text_item.x;
                     let y = text_item.y;
                     let color = text_item.color;
+                    let underline = text_item.underline;
 
                     if y > self.scroll_y && y < self.scroll_y + self.window_height as f64 {
                         let text = &text_item.text.clone();
@@ -539,45 +628,35 @@ impl Tundra {
                         let w_wh = w.get_wh(ui).unwrap();
                         let rel_pos = self.rel(ui, w_wh, [x, y - self.scroll_y]);
                         w.xy(rel_pos)
+                            .h(w_wh[1] + 2.0) //add two pixels to the bottom to make underlines look good
                             .set(ids.text[i], ui);
+
+                        if underline {
+                            //The start and end describe the angle and magnitude
+                            let line_start = [0.0, 0.0];
+                            let line_end = [w_wh[0], 0.0];
+                            let _underline_w = widget::Line::centred(line_start, line_end)
+                                .bottom_left_of(ids.text[i])
+                                .color(color)
+                                .set(ids.underlines[i], ui);
+                        }
 
                         //draw a rectangle around the word widget as well (debug help)
-                        //let r = widget::BorderedRectangle::new(w_wh)
-                        //    .xy(rel_pos)
-                        //    .color(color::TRANSPARENT)
-                        //    .set(ids.rectangles[i], ui);
+                        //let r = widget::BorderedRectangle::new(w_wh).xy(rel_pos).color(color::TRANSPARENT).set(ids.rectangles[i], ui);
                     }
                 },
-                DisplayListItem::Line(line_item) => {
-                    let start = line_item.start;
-                    let end = line_item.end;
-                    let color = line_item.color;
-                    let y = start[1];
-                    if y > self.scroll_y && y < self.scroll_y + self.window_height as f64 {
-                        //convert start and end from absolute to relative
-                        // widget_wh of 0 by 0 to just get the point without adjustments
-                        let start_rel = self.rel(ui, [0.0, 0.0], start);
-                        let end_rel = self.rel(ui, [0.0, 0.0], end);
-
-                        // *** MUST SET FONT BEFORE GETTING DIMENSIONS ***
-                        let w = widget::Line::new(start_rel, end_rel)
-                            .color(color)
-                            .solid()
-                            .thickness(1.5)
-                            .set(ids.text[i], ui);
-                    }
-                }
+                _ => (),
             }
         }
     }
 
 
     /// The positioning behavior of conrad is that 0,0 is the middle of the widget.
-/// This function, when given a ui cell, the widget, and a desired absolute position, will
-/// return the necessary relative position to put the widget's top left corner at
-/// the given coordinates
-///
-/// (0, 0) refers to the top left pixel
+    /// This function, when given a ui cell, the widget, and a desired absolute position, will
+    /// return the necessary relative position to put the widget's top left corner at
+    /// the given coordinates
+    ///
+    /// (0, 0) refers to the top left pixel
     fn rel(&mut self, ui: &conrod_core::UiCell, widget_wh: conrod_core::Dimensions, abs: conrod_core::Point)
            -> conrod_core::Point {
         //get the window bounds and offsets to apply
@@ -600,10 +679,9 @@ impl Tundra {
 
         // Don't scroll past the bottom of the page
         let last_item = self.display_list.last().unwrap();
-        let mut last_y;
+        let last_y;
         match last_item {
             DisplayListItem::Text(item) => last_y = item.y,
-            DisplayListItem::Line(item) => last_y = item.end[1],
         };
 
         if self.scroll_y > last_y - self.window_height as f64 {
@@ -629,6 +707,7 @@ widget_ids! {
             rectangle,
             oval,
             text[],
+            underlines[],
             dummy_text, //for use in laying out text
             rectangles[],
         }
