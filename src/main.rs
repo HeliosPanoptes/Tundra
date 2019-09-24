@@ -310,7 +310,6 @@ impl Tundra {
         let mut underline = false;
 
         let mut current_node: Option<petgraph::graph::NodeIndex> = None;
-        let mut tree = &mut self.layout_state.layout_tree;
 
         let attribute_re: Regex = Regex::new(r#"((\w+)=((\w+)|(".*?")))+"#).unwrap();
 
@@ -319,9 +318,8 @@ impl Tundra {
             match token{
                 Token::Text(text) => {
                     let new_node = LayoutNode::Text(TextNode::new(text.to_owned()));
-                    let new_node = tree.add_node(new_node); //get the node index instead
                     match current_node {
-                        Some(node) => { tree.add_edge(node, new_node, 1); },
+                        Some(current_node) => { self.layout_state.add_child(current_node, new_node); },
                         None => { panic!("Tried to add a text node to an empty layout graph"); },
                     }
                 },
@@ -342,20 +340,16 @@ impl Tundra {
                                 new_element.add_attr(capture[2].to_string().to_lowercase(), capture[3].to_string());
                             }
                         }
-                        let new_node = tree.add_node(LayoutNode::Element(new_element));
-                        match current_node {
-                            Some(node) => { tree.add_edge(node, new_node, 1); },
-                            None => (),
-                        }
+                        let new_node = match current_node {
+                            Some(current_node) => { self.layout_state.add_child(current_node, LayoutNode::Element(new_element)) },
+                            None => { self.layout_state.add_node(LayoutNode::Element(new_element))},
+                        };
                         //enter the current node, unless it's self-closing
                         if !( self_closing || ["br", "link", "meta"].contains(&tag_name)) {
                             current_node = Some(new_node);
                         }
                     } else { //close tag
-                        //go up to the parent
-                        let parent_edge = tree.first_edge(current_node.unwrap(), petgraph::Direction::Incoming).unwrap();
-                        let (parent, _) = tree.edge_endpoints(parent_edge).unwrap();
-                        let current_node = parent;
+                        let current_node = self.layout_state.parent_of(current_node.unwrap());
                     }
                 }
             }
