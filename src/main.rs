@@ -19,7 +19,7 @@ use regex::Regex;
 use glium::Surface;
 use conrod_core::{color, widget, Colorable, Widget, Positionable, Sizeable};
 //Trees, who knew right?
-use petgraph::prelude;
+//use petgraph::prelude;
 use petgraph::Graph;
 // linked trees are pretty hard due to rust's guarantees
 
@@ -171,6 +171,7 @@ impl Tundra {
         //   correct: tight boxes and a proper space. incorrect: extra space in the boxes and overlap
         //let body = "<p>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa a</p>".to_string();
         self.lex(body);
+        self.parse_tokens();
         self.layout(&mut window_ui);
 
         self.render(&mut window_ui);
@@ -268,8 +269,8 @@ impl Tundra {
     }
 
     fn lex(&mut self, source: String) {
-        let mut tokens : Vec<Token> = Vec::new();
-        let mut text : String = "".to_string();
+        let mut tokens: Vec<Token> = Vec::new();
+        let mut text: String = "".to_string();
         for c in source.chars() {
             if c == '<' {
                 //store the text so far and reset
@@ -281,12 +282,92 @@ impl Tundra {
                 //store the tag and reset
                 tokens.push(Token::Tag(text.to_string()));
                 text = "".to_string();
-            }
-            else {
+            } else {
                 text.push(c);
             }
         }
         self.tokens = tokens;
+    }
+
+    /// Put the list of tokens into a layout tree, return the root node
+    fn parse_tokens(&mut self) -> petgraph::graph::NodeIndex {
+        let mut current_node: Option<petgraph::graph::NodeIndex> = None;
+        let attribute_re: Regex = Regex::new(r#"((\w+)=((\w+)|(".*?")))+"#).unwrap();
+
+        for token in self.tokens.iter() {
+            match token {
+                Token::Text(text) => {
+                    let new_node = LayoutNode::Text(TextNode::new(text.to_owned()));
+                    match current_node {
+                        Some(current_node) => { self.layout_state.add_child(current_node, new_node); },
+                        None => { panic!("Tried to add a text node to an empty layout graph"); },
+                    }
+                },
+                Token::Tag(tag) => {
+                    if !tag.starts_with("/") { //open tag
+                        let self_closing;
+                        if tag.ends_with("/") { self_closing = true; } else { self_closing = false; }
+
+                        //tag name
+                        let tag_parts: Vec<&str> = tag.splitn(2, " ").collect();
+                        let tag_name = tag_parts[0];
+                        let mut new_element = ElementNode::new(tag_name.to_string());
+                        if tag_parts.len() > 1 {
+                            let attributes = tag_parts[1];
+                            for capture in attribute_re.captures_iter(&attributes) {
+                                //use the capture groups to split the keys and values
+                                new_element.add_attr(capture[2].to_string().to_lowercase(), capture[3].to_string());
+                            }
+                        }
+                        let new_node = match current_node {
+                            Some(current_node) => { self.layout_state.add_child(current_node, LayoutNode::Element(new_element)) },
+                            None => { self.layout_state.add_node(LayoutNode::Element(new_element)) },
+                        };
+                        //enter the current node, unless it's self-closing
+                        if !(self_closing || ["br", "link", "meta"].contains(&tag_name)) {
+                            current_node = Some(new_node);
+                        }
+                    } else { //close tag
+                        let tag = &tag[1..];
+                        let mut node = current_node;
+
+                        //travel up the tree until we find the right tag or we go off the end
+                        while !node.is_none() {
+                            match self.layout_state.get_layout_node(node.unwrap()) {
+                                LayoutNode::Element(element) => {
+                                    let node_tag = element.tag.to_string();
+                                    if node_tag != tag.to_string() {
+                                        node = self.layout_state.parent_of(node.unwrap());
+                                    } else {
+                                        break;
+                                    }
+                                },
+                                _ => ()
+                            }
+                        }
+
+                        //Handle mis-closed tags
+                        if node.is_none() && self.layout_state.parent_of(current_node.unwrap()).is_some() {
+                            //If we went off the end of the tree, and our current node has a parent, go up a level
+                            current_node = self.layout_state.parent_of(current_node.unwrap());
+                        } else if self.layout_state.parent_of(node.unwrap()).is_some() {
+                            //If we found the tag because we aren't off the tree, set the current node the parent of the tag node
+                            current_node = self.layout_state.parent_of(node.unwrap());
+                        }
+                    }
+                }
+            }
+        }
+
+        // make sure to return the root of the tree
+        let mut root = current_node;
+        while root.is_some() {
+            current_node = root;
+            //try and go up a level
+            root = self.layout_state.parent_of(current_node.unwrap());
+        }
+        //once we can't go up any further:
+        return current_node.unwrap();
     }
 
     /// Takes text and returns a display-list of the format (x, y, text)
@@ -314,58 +395,7 @@ impl Tundra {
         let mut in_comment = false;
         let mut underline = false;
 
-        let mut current_node: Option<petgraph::graph::NodeIndex> = None;
-
-        let attribute_re: Regex = Regex::new(r#"((\w+)=((\w+)|(".*?")))+"#).unwrap();
-
         for token in self.tokens.iter() {
-
-            match token{
-                Token::Text(text) => {
-                    let new_node = LayoutNode::Text(TextNode::new(text.to_owned()));
-                    match current_node {
-                        Some(current_node) => { self.layout_state.add_child(current_node, new_node); },
-                        None => { panic!("Tried to add a text node to an empty layout graph"); },
-                    }
-                },
-                Token::Tag(tag) => {
-                    if !tag.starts_with("/") { //open tag
-                        let self_closing;
-                        if tag.ends_with("/") {self_closing = true;}
-                        else { self_closing = false;}
-
-                        //tag name
-                        let tag_parts: Vec<&str> = tag.splitn(2," ").collect();
-                        let tag_name = tag_parts[0];
-                        let mut new_element = ElementNode::new(tag_name.to_string());
-                        if tag_parts.len() > 1 {
-                            let attributes = tag_parts[1];
-                            for capture in attribute_re.captures_iter(&attributes) {
-                                //use the capture groups to split the keys and values
-                                new_element.add_attr(capture[2].to_string().to_lowercase(), capture[3].to_string());
-                            }
-                        }
-                        let new_node = match current_node {
-                            Some(current_node) => { self.layout_state.add_child(current_node, LayoutNode::Element(new_element)) },
-                            None => { self.layout_state.add_node(LayoutNode::Element(new_element))},
-                        };
-                        //enter the current node, unless it's self-closing
-                        if !( self_closing || ["br", "link", "meta"].contains(&tag_name)) {
-                            current_node = Some(new_node);
-                        }
-                    } else { //close tag
-                        let parent = self.layout_state.parent_of(current_node.unwrap());
-                        match parent {
-                            Some(parent) => { current_node = Some(parent)},
-                            _ => (), //don't let go of the root of the tree
-                        }
-                    }
-                }
-            }
-
-
-
-
 
             //Calculate whitespace of current font
             let w = widget::Text::new(" ")
@@ -373,8 +403,6 @@ impl Tundra {
                 .font_size(FONT_SIZE);
             let linespace_h = w.get_h(ui).unwrap();
             let whitespace_w = w.get_w(ui).unwrap();
-
-
 
             match token {
                 Token::Text(text) => {
@@ -673,7 +701,6 @@ impl Tundra {
                         //let r = widget::BorderedRectangle::new(w_wh).xy(rel_pos).color(color::TRANSPARENT).set(ids.rectangles[i], ui);
                     }
                 },
-                _ => (),
             }
         }
     }
