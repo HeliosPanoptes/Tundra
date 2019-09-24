@@ -101,6 +101,29 @@ struct LayoutState{
     layout_tree: petgraph::Graph<LayoutNode, i32>,
 }
 
+impl LayoutState {
+    /// Adds a node into the tree and returns it's index. Useful for setting up a root node. Use add_child to add a node and link to it
+    fn add_node(&mut self, node: LayoutNode) -> petgraph::graph::NodeIndex {
+        self.layout_tree.add_node(node)
+    }
+    /// Adds and links a child into the tree. Returns the child's index
+    fn add_child(&mut self, parent_index: petgraph::graph::NodeIndex, child: LayoutNode) -> petgraph::graph::NodeIndex {
+        let child_id = self.layout_tree.add_node(child);
+        self.layout_tree.add_edge(parent_index, child_id, 1);
+        return child_id;
+    }
+
+    fn parent_of(&self, child_index: petgraph::graph::NodeIndex) -> petgraph::graph::NodeIndex {
+        let parent_edge = self.layout_tree.first_edge(child_index, petgraph::Incoming);
+        let (parent, _) = tree.edge_endpoints(parent_edge).unwrap();
+        return parent;
+    }
+
+    fn get_layout_node(&self, node_index: petgraph::graph::NodeIndex) -> &LayoutNode {
+        &self.layout_tree[node_index]
+    }
+}
+
 enum Token {
     Text(String),
     Tag(String),
@@ -336,6 +359,8 @@ impl Tundra {
                     }
                 }
             }
+
+
 
 
 
