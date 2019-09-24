@@ -113,10 +113,15 @@ impl LayoutState {
         return child_id;
     }
 
-    fn parent_of(&self, child_index: petgraph::graph::NodeIndex) -> petgraph::graph::NodeIndex {
+    fn parent_of(&self, child_index: petgraph::graph::NodeIndex) -> Option<petgraph::graph::NodeIndex> {
         let parent_edge = self.layout_tree.first_edge(child_index, petgraph::Incoming);
-        let (parent, _) = tree.edge_endpoints(parent_edge).unwrap();
-        return parent;
+        match parent_edge {
+            Some(parent_edge) => {
+                let (parent, _) = self.layout_tree.edge_endpoints(parent_edge).unwrap();
+                return Some(parent);
+            },
+            None => (return None)
+        }
     }
 
     fn get_layout_node(&self, node_index: petgraph::graph::NodeIndex) -> &LayoutNode {
@@ -349,7 +354,11 @@ impl Tundra {
                             current_node = Some(new_node);
                         }
                     } else { //close tag
-                        let current_node = self.layout_state.parent_of(current_node.unwrap());
+                        let parent = self.layout_state.parent_of(current_node.unwrap());
+                        match parent {
+                            Some(parent) => { current_node = Some(parent)},
+                            _ => (), //don't let go of the root of the tree
+                        }
                     }
                 }
             }
