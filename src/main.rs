@@ -99,7 +99,6 @@ enum LayoutNode {
 struct LayoutState{
     layout_tree: petgraph::Graph<LayoutNode, i32>,
     layout_root: Option<petgraph::graph::NodeIndex>,
-    //thumbtack
     x: f64,
     y: f64,
     current_color: conrod_core::color::Color,
@@ -325,13 +324,15 @@ impl Tundra {
 
     /// Put the list of tokens into a layout tree, return the root node
     fn parse_tokens(&mut self) {
+        //thumbtack
         let mut current_node: Option<petgraph::graph::NodeIndex> = None;
         let attribute_re: Regex = Regex::new(r#"((\w+)=((\w+)|(".*?")))+"#).unwrap();
 
         for token in self.tokens.iter() {
             match token {
                 Token::Text(text) => {
-                    let new_node = LayoutNode::Text(TextNode::new(text.to_owned()));
+                    let text = self.translate_entities(text.to_owned());
+                    let new_node = LayoutNode::Text(TextNode::new(text));
                     match current_node {
                         Some(current_node) => { self.layout_state.add_child(current_node, new_node); },
                         None => { panic!("Tried to add a text node to an empty layout graph"); },
@@ -353,7 +354,9 @@ impl Tundra {
                             let attributes = tag_parts[1];
                             for capture in attribute_re.captures_iter(&attributes) {
                                 //use the capture groups to split the keys and values
-                                new_element.add_attr(capture[2].to_string().to_lowercase(), capture[3].to_string());
+                                let name = capture[2].to_string().to_lowercase();
+                                let value = self.translate_entities(capture[3].to_string());
+                                new_element.add_attr(name, value);
                             }
                         }
                         let new_node = match current_node {
@@ -407,10 +410,17 @@ impl Tundra {
         self.layout_state.layout_root = current_node;
     }
 
+    fn translate_entities(&self, mut text: String) -> String {
+        //&amp;, &lt;, &gt;, and &quot;
+        text = text.replace("&amp;", "&");
+        text = text.replace("&lt;", "<");
+        text = text.replace("&gt;", ">");
+        text = text.replace("&quot;", "\"");
+        return text;
+    }
+
     /// Takes text and returns a display-list of the format (x, y, text)
     fn layout(&mut self, window_ui: &mut WindowUi, node: petgraph::graph::NodeIndex) {
-        //thumbtack
-
         match self.layout_state.get_layout_node(node) {
             LayoutNode::Element(_element) => {
                 self.layout_open(window_ui, node);
