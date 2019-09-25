@@ -19,8 +19,8 @@ use regex::Regex;
 use glium::Surface;
 use conrod_core::{color, widget, Colorable, Widget, Positionable, Sizeable};
 //Trees, who knew right?
-use petgraph::Graph;
 // linked trees are pretty hard due to rust's guarantees
+use petgraph::Graph;
 
 //conrod support functions
 mod support;
@@ -135,8 +135,14 @@ impl LayoutState {
         }
     }
 
-    fn children_of(&mut self, parent_index: petgraph::graph::NodeIndex) -> petgraph::graph::Neighbors<i32> {
-        self.layout_tree.neighbors_directed(parent_index, petgraph::Outgoing)
+    fn children_of(&mut self, parent_index: petgraph::graph::NodeIndex) -> Vec<petgraph::graph::NodeIndex> {
+        //collect the children into a vector then reverse the vector
+        let mut children = Vec::new();
+        for child in self.layout_tree.neighbors_directed(parent_index, petgraph::Outgoing) {
+            children.push(child);
+        }
+        children.reverse();
+        return children;
     }
 
     fn get_layout_node(&mut self, node_index: petgraph::graph::NodeIndex) -> &LayoutNode {
@@ -183,11 +189,11 @@ impl Tundra {
         };
     }
     /// A convenience method that combines all of the steps for the browser to
-/// display the page
-///
-/// At this point it holds all the state... maybe not the best, but we'll work with it
-/// until it doesn't work anymore
-/// I may have hit that point with scrolling. I need to store the state, so it needs to be in an object
+    /// display the page
+    ///
+    /// At this point it holds all the state... maybe not the best, but we'll work with it
+    /// until it doesn't work anymore
+    /// I may have hit that point with scrolling. I need to store the state, so it needs to be in an object
     fn browse(&mut self, url: &str) {
         // construct our `Ui`.
         let mut window_ui = self.set_up_window();
@@ -197,6 +203,7 @@ impl Tundra {
         // test case for spaces and bounding rects being applied correctly
         //   correct: tight boxes and a proper space. incorrect: extra space in the boxes and overlap
         //let body = "<p>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa a</p>".to_string();
+//        let body = "<body><p>1</p> <p>2</p> <p>3</p></body>".to_string();
         self.lex(body);
         self.parse_tokens();
         self.layout(&mut window_ui, self.layout_state.layout_root.unwrap());
@@ -408,8 +415,7 @@ impl Tundra {
             LayoutNode::Element(_element) => {
                 self.layout_open(window_ui, node);
                 //must detach from the tree in order to walk and mutate state at the same time
-                let mut child_walker = self.layout_state.children_of(node).detach();
-                while let Some(child) = child_walker.next_node(&self.layout_state.layout_tree) {
+                for child in self.layout_state.children_of(node) {
                     self.layout(window_ui, child);
                 }
                 self.layout_close(window_ui, node);
@@ -485,21 +491,21 @@ impl Tundra {
                 }
 
                 match tag.as_str() {
-                    "/body" => state.in_body = false,
-                    "/i" => state.italic = false,
-                    "/b" => state.bold = false,
-                    "/p" | "br" => {
+                    "body" => state.in_body = false,
+                    "i" => state.italic = false,
+                    "b" => state.bold = false,
+                    "p" | "br" => {
                         state.terminal_space = true;
                         state.x = 13.0;
                         state.y += linespace_h * LINE_SPACING + 16.0;
                     },
-                    "/h1" => {
+                    "h1" => {
                         state.bold = false;
                         state.terminal_space = true;
                         state.x = 13.0;
                         state.y += linespace_h * LINE_SPACING + 16.0;
                     },
-                    "/a" => {
+                    "a" => {
                         state.underline = false;
                         state.current_color = color::BLACK;
                     },
